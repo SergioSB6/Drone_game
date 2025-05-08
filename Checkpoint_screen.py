@@ -157,7 +157,7 @@ class CheckpointScreen:
         # Crear ventana de resumen
         self.over = ctk.CTkToplevel(self.game_window)
         self.over.title("Fin de la Partida")
-        self.over.geometry("400x300")
+        self.over.geometry("500x300")
 
         # Contenedor interior para centrar y ajustar márgenes
         frame = ctk.CTkFrame(self.over, fg_color="transparent")
@@ -182,8 +182,12 @@ class CheckpointScreen:
 
         # --- Mensaje de ganador ---
         winner_font = ("M04_FATAL FURY", 20)
-        ctk.CTkLabel(self.over, text=f"Ganador: {winner}", font=winner_font, text_color="blue") \
+        if winner == "Jugador 1" or "Jugador 2":
+            ctk.CTkLabel(self.over, text=f"Ganador: {winner}", font=winner_font, text_color="blue") \
             .pack(pady=(0, 10))
+        else:
+            ctk.CTkLabel(self.over, text=f" {winner}", font=winner_font, text_color="blue") \
+                .pack(pady=(0, 10))
 
         # --- Botón de cierre ---
         def on_finalize():

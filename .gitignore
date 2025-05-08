@@ -1,0 +1,14 @@
+# Ignorar carpetas de build o librerías pesadas
+Mission Planner/
+logs/
+
+# Ignorar binarios y archivos generados
+*.dll
+*.exe
+*.bin
+*.pyc
+__pycache__/
+
+# Ignorar configuraciones locales
+.vscode/
+*.user

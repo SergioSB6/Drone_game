@@ -259,7 +259,7 @@ def abrir_configuracion_avanzada():
 # Función para abrir la botonera del dron 2
 def abrir_configuracion_avanzada_dron2():
     print("Abrir configuración avanzada para Dron 2")
-    controlador_dron2 = ControlesAdmin(dron2, drone_label="Dron 2")
+    controlador_dron2 = ControlesAdmin(dron2, drone_label="Dron 2", button_color="blue")
     ventana_dron2 = controlador_dron2.abrir_ventana()
 
 # Función para reproducir música al iniciar el programa

@@ -4,15 +4,10 @@ from tkinter import filedialog, messagebox, Toplevel
 import json
 import math
 from PIL import Image, ImageTk
-from Dron import Dron
 import time
 import threading
 import winsound
-import pywinstyles
-# Módulos de dron
-from modules.dron_setGeofence import setGEOFence
-from modules.dron_local_telemetry import send_local_telemetry_info
-from modules.dron_nav import go, changeHeading
+import pygame
 
 class CheckpointScreen:
     def __init__(self, dron, dron2, parent_frame):
@@ -122,7 +117,7 @@ class CheckpointScreen:
         # ─── Método para mostrar la ventana de fin de partida ───────────────────
 
 
-    def _show_game_over(self):
+    def _show_game_over(self, winner_forced=None):
         """
         Se ejecuta una sola vez al acabar tiempo o al recoger todos los checkpoints.
         Muestra puntos, tiempo empleado y ganador.
@@ -133,26 +128,28 @@ class CheckpointScreen:
 
         threading.Thread(target=self.dron.stopGo, daemon=True).start()
         threading.Thread(target=self.dron2.stopGo, daemon=True).start()
-
+        pygame.mixer.music.stop()
         total = len(self.raw_checkpoints)
         elapsed = self.timer_duration - self.remaining_time
         time_str = self._format_time(elapsed)
 
-        # Determinar ganador
-        if self.cp1_count == total and self.cp2_count == total:
-            winner = "Empate"
-        elif self.cp1_count == total:
-            winner = "Jugador 1"
-        elif self.cp2_count == total:
-            winner = "Jugador 2"
+        if winner_forced:
+            winner = winner_forced
         else:
-            # fin por tiempo: el que más checkpoints tenga
-            if self.cp1_count > self.cp2_count:
+            if self.cp1_count == total and self.cp2_count == total:
+                winner = "Empate"
+            elif self.cp1_count == total:
                 winner = "Jugador 1"
-            elif self.cp2_count > self.cp1_count:
+            elif self.cp2_count == total:
                 winner = "Jugador 2"
             else:
-                winner = "Empate"
+                # fin por tiempo: el que más checkpoints tenga
+                if self.cp1_count > self.cp2_count:
+                    winner = "Jugador 1"
+                elif self.cp2_count > self.cp1_count:
+                    winner = "Jugador 2"
+                else:
+                    winner = "Empate"
 
         # Crear ventana de resumen
         self.over = ctk.CTkToplevel(self.game_window)
@@ -189,12 +186,25 @@ class CheckpointScreen:
             ctk.CTkLabel(self.over, text=f" {winner}", font=winner_font, text_color="blue") \
                 .pack(pady=(0, 10))
 
-        # --- Botón de cierre ---
         def on_finalize():
-            # 2) RTL en hilos separados
+            # Lanza RTL en hilos separados
             threading.Thread(target=self.dron.RTL, daemon=True).start()
             threading.Thread(target=self.dron2.RTL, daemon=True).start()
-            # 3) cerrar ventanas
+
+            # Reinicia los contadores
+            self.cp1_count = 0
+            self.cp2_count = 0
+
+            self.cp1_label.configure(text=f"Checkpoints: {self.cp1_count}")
+            self.cp2_label.configure(text=f"Checkpoints: {self.cp2_count}")
+
+            self.life1 = 1.0
+            self.life2 = 1.0
+
+            self.hp1_bar.set(self.life1)
+            self.hp2_bar.set(self.life2)
+
+            # Cierra ventanas
             self.over.destroy()
             self.game_window.destroy()
 
@@ -388,9 +398,14 @@ class CheckpointScreen:
                 damage = self.damage_map[self.difficulty]
                 self.life1 = max(0.0, self.life1 - damage)
                 self.hp1_bar.set(self.life1)
+                if self.life1 <= 0.0:
+                    winsound.PlaySound("assets/death.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    time.sleep(1)
+                    self._show_game_over(winner_forced="Jugador 2")
+                    return True
                 print(f"J1 choca: vida ahora {self.life1:.2f}")
                 print("¡Alerta! Dron 1 sobre obstáculo en celda", (col, row))
-                winsound.PlaySound("assets/Bite.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
+                winsound.PlaySound("assets/hurt.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.is_on_obstacle = True
             return True
         self.is_on_obstacle=False
@@ -437,9 +452,14 @@ class CheckpointScreen:
                 damage = self.damage_map[self.difficulty]
                 self.life2 = max(0.0, self.life2 - damage)
                 self.hp2_bar.set(self.life2)
+                if self.life2 <= 0.0:
+                    winsound.PlaySound("assets/death.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    time.sleep(1)
+                    self._show_game_over(winner_forced="Jugador 1")
+                    return True
                 print(f"J2 choca: vida ahora {self.life2:.2f}")
                 print("¡Alerta! Dron 2 sobre obstáculo en celda", (col, row))
-                winsound.PlaySound("assets/Bite.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
+                winsound.PlaySound("assets/hurt.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
             self.is_on_obstacle2 = True
             return True
         self.is_on_obstacle2 = False
@@ -468,42 +488,116 @@ class CheckpointScreen:
         if self.cp2_count == len(self.raw_checkpoints): self._show_game_over()
         return False
 
-    def arm_and_takeoff(self, drone):
+    def _arm_flag(self, drone, event):
+        """Arma al dron y señala cuando termina."""
         try:
-            print(f"Iniciando armado para {drone}")
-            drone.arm()  # Comando para armar
-            time.sleep(1)  # Espera para dar tiempo a que se procese el armado
-            drone.takeOff(5)  # Comando para despegar a 5 metros
-            print(f"Comando de despegue enviado para {drone}")
-        except Exception as e:
-            print(f"Error al armar/despegar {drone}: {e}")
+            drone.arm()
+        finally:
+            event.set()
 
-
-
-    def start_game(self):
-        if not self.map_data:
-            messagebox.showwarning("Advertencia", "Selecciona un mapa antes de jugar.")
-            return
-
-        # ─── Leer y validar tiempo en minutos (mínimo 2) ───────────────────────
+    def _takeoff_flag(self, drone, event):
+        """Despega al dron y señala cuando termina."""
         try:
-            mins = int(self.time_entry.get())
-        except ValueError:
-            mins = 2
-        if mins < 2:
-            mins = 2
-        self.timer_duration = mins * 60   # en segundos
+            drone.takeOff(5)
+        finally:
+            event.set()
 
-        self.raw_checkpoints = self.map_data.get("checkpoints", [])
-        self.queue_j1 = [{"col": cp["original"]["col"], "row": cp["original"]["row"], "id": cp["id"]}
-                         for cp in self.raw_checkpoints]
-        self.queue_j2 = [{"col": cp["mirror"]["col"], "row": cp["mirror"]["row"], "id": cp["id"]}
-                         for cp in self.raw_checkpoints]
+    def _on_ready(self):
+        """Se pulsa Ready: destruye la carga y arranca el juego."""
+        self.ready_btn.destroy()
+        self.loading.destroy()
+        self._init_game()
+
+    def _show_loading_screen(self):
+
+        pygame.mixer.music.stop()
+        # 1. Eventos para saber cuando acaba cada operación
+        self.arm_done1 = threading.Event()
+        self.arm_done2 = threading.Event()
+        self.takeoff_done1 = threading.Event()
+        self.takeoff_done2 = threading.Event()
+        self.stage = 1
+
+        root = self.frame.winfo_toplevel()
+        self.loading = ctk.CTkToplevel(root, fg_color="white")
+        self.loading.attributes("-fullscreen", True)
+        self.loading.transient(root)
+        self.loading.grab_set()
+        self.loading.bind("<Escape>", lambda e: self.loading.attributes("-fullscreen", False))
+
+        self.msg_label = ctk.CTkLabel(self.loading, text="Starting...", font=("M04_FATAL FURY", 12), text_color="black", anchor="w")
+        self.msg_label.place(in_=self.loading, relx=0.02, rely=0.95, anchor="w")
+
+        self.bar = ctk.CTkProgressBar(self.loading, orientation= "horizontal", height= 30, progress_color="green")
+        self.bar.set(0.0)
+        self.bar.pack(side="bottom", fill="x", padx=0, pady=10)
+
+        self.pct_label = ctk.CTkLabel(self.loading, text="0 %", font=("Arial", 16), text_color="black")
+        self.pct_label.place(in_=self.loading, relx=0.98, rely=0.95, anchor="e")
+
+        self.ready_btn = ctk.CTkButton(self.loading, text="Ready", font=("M04_FATAL FURY", 18),text_color="black", fg_color="transparent", command=self._on_ready, state="disabled")
+        self.ready_btn.place(relx=0.5, rely=0.85, anchor="center")
+
+        # 3. Arranca sólo ARM
+        threading.Thread(target=self._arm_flag, args=(self.dron, self.arm_done1), daemon=True).start()
+        time.sleep(1)
+        threading.Thread(target=self._takeoff_flag, args=(self.dron, self.takeoff_done1), daemon=True).start()
+        threading.Thread(target=self._arm_flag, args=(self.dron2, self.arm_done2), daemon=True).start()
+        time.sleep(1)
+        threading.Thread(target=self._takeoff_flag, args=(self.dron2, self.takeoff_done2), daemon=True).start()
+        # 4. Primer bucle de actualización
+        self.loading.after(100, self._update_loading)
+
+    def _update_loading(self):
+        """Actualiza la barra y pasa de etapa según eventos o tiempos."""
+        if self.stage == 1:
+            self.msg_label.configure(text="Arming...")
+
+            if self.arm_done1.is_set() and self.arm_done2.is_set():
+                self.stage = 2
+                self.bar.set(0.25)
+                self.pct_label.configure(text="25 %")
+                self.loading.update_idletasks()
+            self.loading.after(2000, self._update_loading)
+
+        elif self.stage == 2:
+            self.msg_label.configure(text="warming up engines...")
+            self.bar.set(0.50)
+            self.pct_label.configure(text="50 %")
+            self.loading.update_idletasks()
+            self.stage = 3
+            self.loading.after(5000, self._update_loading)
+
+        elif self.stage == 3:
+            self.msg_label.configure(text="Taking off...")
+            self.bar.set(0.75)
+            self.pct_label.configure(text="75 %")
+            self.loading.update_idletasks()
+
+            self.stage = 4
+            self.loading.after(2000, self._update_loading)
+
+        elif self.stage == 4:
+            if self.takeoff_done1.is_set() and self.takeoff_done2.is_set():
+                self.bar.set(1.0)
+                self.msg_label.configure(text="Loading progress finished")
+                self.pct_label.configure(text="100 %")
+                self.loading.update_idletasks()
+                self.ready_btn.configure(state="normal")
+            else:
+                self.loading.after(100, self._update_loading)
+
+    def _init_game(self):
+
+        pygame.mixer.music.load('assets/track_1.wav')
+        pygame.mixer.music.play(-1, 0.0)
+        pygame.mixer.music.set_volume(0.5)
+
         map_width = self.map_data["map_size"]["width"]
         map_height = self.map_data["map_size"]["height"]
         cell_size = self.map_data["map_size"]["cell_size"]
 
-            # --- ventana en fullscreen ---
+        # --- ventana en fullscreen ---
         def end_fullscreen(event=None):
             self.game_window.attributes("-fullscreen", False)
 
@@ -521,7 +615,8 @@ class CheckpointScreen:
         life_frame1 = ctk.CTkFrame(self.game_window, fg_color="transparent")
         life_frame1.grid(row=0, column=0, sticky="nw", padx=20, pady=10)
         life_frame1.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(life_frame1, text="PLAYER 1", font=("M04_FATAL FURY", 20), bg_color="transparent", text_color="black") \
+        ctk.CTkLabel(life_frame1, text="PLAYER 1", font=("M04_FATAL FURY", 20), bg_color="transparent",
+                     text_color="black") \
             .grid(row=0, column=0, pady=(0, 5))
 
         self.hp1_bar = ctk.CTkProgressBar(
@@ -531,11 +626,11 @@ class CheckpointScreen:
             height=20,
             progress_color="green",
             fg_color="white"
-            )
+        )
         self.hp1_bar.set(self.life1)
         self.hp1_bar.grid(row=1, column=0, sticky="ew", pady=(20, 0))
 
-        #label de recuento de checkpoints J1
+        # label de recuento de checkpoints J1
         self.cp1_label = ctk.CTkLabel(life_frame1,
                                       text=f"Checkpoints: {self.cp1_count}",
                                       font=("M04_FATAL FURY", 16),
@@ -548,8 +643,6 @@ class CheckpointScreen:
                                          font=("M04_FATAL FURY", 16),
                                          text_color="black")
         self.timer1_label.grid(row=3, column=0, pady=(0, 10), sticky="n")
-
-
 
         # --- contenedor central expandible ---
         center_container = ctk.CTkFrame(self.game_window, fg_color="transparent")
@@ -587,8 +680,7 @@ class CheckpointScreen:
             y2 = y1 + cell_size
             game_canvas.create_rectangle(x1, y1, x2, y2, fill="red", outline="red", tag="geofence")
 
-
-        #lista_geo = [[[0, 0], [0, 0], [0, 980], [224, 980], [224, 0]], [[224, 0], [224, 980], [448, 980], [448, 0]]]
+        # lista_geo = [[[0, 0], [0, 0], [0, 980], [224, 980], [224, 0]], [[224, 0], [224, 980], [448, 980], [448, 0]]]
         # lista_geo = [[[14,14], [14, 14], [14, 966], [210, 966], [210, 14]], [[238,14],[238,966],[434,966],[434,14]]]
         # for poligono in lista_geo:
         #     for coordenada in poligono:
@@ -665,7 +757,8 @@ class CheckpointScreen:
         life_frame2 = ctk.CTkFrame(self.game_window, fg_color="transparent")
         life_frame2.grid(row=0, column=2, sticky="ne", padx=20, pady=10)
         life_frame2.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(life_frame2, text="PLAYER 2", font=("M04_FATAL FURY", 20), fg_color="transparent", text_color="black") \
+        ctk.CTkLabel(life_frame2, text="PLAYER 2", font=("M04_FATAL FURY", 20), fg_color="transparent",
+                     text_color="black") \
             .grid(row=0, column=0, pady=(0, 5))
 
         self.hp2_bar = ctk.CTkProgressBar(
@@ -719,8 +812,36 @@ class CheckpointScreen:
 
         self.start_telemetry_sync(game_canvas)
         self.start_telemetry_sync_second(game_canvas)
-        threading.Thread(target=self.arm_and_takeoff, args=(self.dron,)).start()
-        threading.Thread(target=self.arm_and_takeoff, args=(self.dron2,)).start()
+
+    def start_game(self):
+
+        if not self.map_data:
+            messagebox.showwarning("Advertencia", "Selecciona un mapa antes de jugar.")
+            return
+
+        if not self.connected_drones:
+            messagebox.showwarning(
+                "Advertencia",
+                "No hay jugadores conectados. Conecta al menos un dron antes de empezar."
+            )
+            return
+
+        # ─── Leer y validar tiempo en minutos (mínimo 2) ───────────────────────
+        try:
+            mins = int(self.time_entry.get())
+        except ValueError:
+            mins = 2
+        if mins < 2:
+            mins = 2
+        self.timer_duration = mins * 60   # en segundos
+
+        self.raw_checkpoints = self.map_data.get("checkpoints", [])
+        self.queue_j1 = [{"col": cp["original"]["col"], "row": cp["original"]["row"], "id": cp["id"]}
+                         for cp in self.raw_checkpoints]
+        self.queue_j2 = [{"col": cp["mirror"]["col"], "row": cp["mirror"]["row"], "id": cp["id"]}
+                         for cp in self.raw_checkpoints]
+
+        self._show_loading_screen()
 
     # ----------------------------------------------------------------------
     # 4) Telemetría y coordenadas

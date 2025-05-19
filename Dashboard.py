@@ -85,9 +85,9 @@ def main():
     print("Directorio base:", base_dir)
 
     # Rutas a los ejecutables
-    sitl_exe = os.path.join(base_dir, "Mission Planner", "sitl", "ArduCopter.exe")
-    defaults  = os.path.join(base_dir, "Mission Planner", "sitl", "default_params", "copter.parm")
-    mp_exe    = os.path.join(base_dir, "Mission Planner", "Mission Planner", "MissionPlanner.exe")
+    sitl_exe = os.path.join(base_dir, "Mission Planner1", "sitl", "ArduCopter.exe")
+    defaults  = os.path.join(base_dir, "Mission Planner1", "sitl", "default_params", "copter.parm")
+    mp_exe    = os.path.join(base_dir, "Mission Planner1", "Mission Planner2", "MissionPlanner.exe")
 
     # Verificaciones
     for path,name in [(sitl_exe,"SITL"), (defaults,"copter.parm"), (mp_exe,"Mission Planner")]:
@@ -207,7 +207,7 @@ def volver_titulo():
 
 # ================== CONTENIDO DEL TITULO ==================
 mostrar_frame(frame_titulo)
-label = ctk.CTkLabel(master=frame_titulo, text="DroneLab", font=("M04_FATAL FURY", 80),bg_color="#000001")
+label = ctk.CTkLabel(master=frame_titulo, text="DroneQuest PX", font=("M04_FATAL FURY", 80),bg_color="#000001")
 label.place(anchor="n", rely=0.1, relx=0.5)
 pywinstyles.set_opacity(label, value=1, color="#000001")
 

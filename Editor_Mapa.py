@@ -49,7 +49,7 @@ class MapFrameClass:
 
     def load_obstacle_images(self):
         try:
-            self.obstacle_images["cuadrado"] = Image.open("assets/square.png").resize(
+            self.obstacle_images["cuadrado"] = Image.open("assets/cono.png").resize(
                 (self.cell_size, self.cell_size), Image.LANCZOS)
         except FileNotFoundError:
             self.obstacle_images["cuadrado"] = Image.new("RGB", (self.cell_size, self.cell_size), "red")
@@ -230,7 +230,7 @@ class MapFrameClass:
                 },
                 "background": getattr(self, "background_image_path", None),
                 "obstacles": obstacles,
-                "obstacle_image": "assets/square.png",
+                "obstacle_image": "assets/cono.png",
                 "geofence": geofence_cells,
                 "occupied_cells": occupied_cells
             }

@@ -9,6 +9,7 @@ import threading
 import winsound
 import pygame
 
+
 class CheckpointScreen:
     def __init__(self, dron, dron2, parent_frame):
         self.dron = dron
@@ -51,14 +52,14 @@ class CheckpointScreen:
         label_title.grid(row=0, column=0, columnspan=2, pady=20, sticky="n")
 
         # ---------------- LISTA DE JUGADORES (Columna 0) ----------------
-        label_players = ctk.CTkLabel(self.frame, text="LISTA DE JUGADORES", font=("M04_FATAL FURY", 20))
+        label_players = ctk.CTkLabel(self.frame, text="CONNECTED PLAYERS", font=("M04_FATAL FURY", 20))
         label_players.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="n")
 
         self.player_listbox = ctk.CTkTextbox(self.frame, width=300, height=300)
         self.player_listbox.grid(row=2, column=0, padx=10, pady=5, sticky="n")
 
         # ---------------- PREVIEW MAPA (Columna 1) ----------------
-        self.preview_label = ctk.CTkLabel(self.frame, text="PREVIEW MAPA", font=("M04_FATAL FURY", 20))
+        self.preview_label = ctk.CTkLabel(self.frame, text="MAP PREVIEW", font=("M04_FATAL FURY", 20))
         self.preview_label.grid(row=1, column=1, padx=10, pady=(0, 5), sticky="n")
 
         self.map_canvas = ctk.CTkCanvas(self.frame, width=500, height=500, bg="gray")
@@ -73,20 +74,20 @@ class CheckpointScreen:
         ctk.CTkLabel(botones_frame, text="Dificultad:", font=("M04_FATAL FURY", 18)).pack(side="left", padx=(10, 5))
         self.diff_menu = ctk.CTkOptionMenu(
             botones_frame,
-            values=["Facil", "Medio", "Dificil"],
+            values=["Easy", "Medium", "Hard"],
             variable=self.difficulty_var,
             command=self.on_difficulty_change
         )
         self.diff_menu.pack(side="left", padx=(0, 20))
 
         # Botones de acción
-        self.boton_select_map = ctk.CTkButton(botones_frame, text="Seleccionar Mapa", command=self.select_map)
+        self.boton_select_map = ctk.CTkButton(botones_frame, text="Select map", command=self.select_map)
         self.boton_select_map.pack(side="left", padx=10)
 
-        self.boton_connect = ctk.CTkButton(botones_frame, text="Conectar Jugador", command=self.connect_player)
+        self.boton_connect = ctk.CTkButton(botones_frame, text="Connect player", command=self.connect_player)
         self.boton_connect.pack(side="left", padx=10)
 
-        self.boton_jugar = ctk.CTkButton(botones_frame, text="Jugar", command=self.start_game)
+        self.boton_jugar = ctk.CTkButton(botones_frame, text="Play", command=self.start_game)
         self.boton_jugar.pack(side="left", padx=10)
 
         self.boton_volver = ctk.CTkButton(self.frame, text="Return", font=("M04_FATAL FURY", 30),
@@ -97,7 +98,7 @@ class CheckpointScreen:
         self.game_over = False
 
         # Dentro de botones_frame, justo tras self.diff_menu.pack(...)
-        ctk.CTkLabel(botones_frame, text="Tiempo (min):", font=("M04_FATAL FURY", 18)) \
+        ctk.CTkLabel(botones_frame, text="Time:", font=("M04_FATAL FURY", 18)) \
             .pack(side="left", padx=(10, 5))
         self.time_entry = ctk.CTkEntry(botones_frame, width=50)
         self.time_entry.insert(0, "2")  # valor por defecto (minutos)
@@ -137,53 +138,56 @@ class CheckpointScreen:
             winner = winner_forced
         else:
             if self.cp1_count == total and self.cp2_count == total:
-                winner = "Empate"
+                winner = "Draw"
             elif self.cp1_count == total:
-                winner = "Jugador 1"
+                winner = "Player 1"
             elif self.cp2_count == total:
-                winner = "Jugador 2"
+                winner = "Player 2"
             else:
                 # fin por tiempo: el que más checkpoints tenga
                 if self.cp1_count > self.cp2_count:
-                    winner = "Jugador 1"
+                    winner = "Player 1"
                 elif self.cp2_count > self.cp1_count:
-                    winner = "Jugador 2"
+                    winner = "Player 2"
                 else:
-                    winner = "Empate"
+                    winner = "Draw"
 
         # Crear ventana de resumen
         self.over = ctk.CTkToplevel(self.game_window)
-        self.over.title("Fin de la Partida")
-        self.over.geometry("500x300")
+        self.over.title("Game over")
+        self.over.geometry("600x400")
 
+        title_lbl = ctk.CTkLabel(self.over, text="GAME OVER",font=("M04_FATAL FURY", 40, "bold"), text_color="red")
+        title_lbl.pack(pady=(20, 10))
         # Contenedor interior para centrar y ajustar márgenes
         frame = ctk.CTkFrame(self.over, fg_color="transparent")
         frame.pack(expand=True, fill="both", padx=20, pady=20)
-
+        for c in range(3):
+            frame.grid_columnconfigure(c, weight=1)
         # --- Encabezados de tabla ---
         header_font = ("M04_FATAL FURY", 18, "bold")
-        ctk.CTkLabel(frame, text="Jugador", font=header_font).grid(row=0, column=0, padx=10, pady=(0, 5))
-        ctk.CTkLabel(frame, text="Puntos", font=header_font).grid(row=0, column=1, padx=10, pady=(0, 5))
-        ctk.CTkLabel(frame, text="Tiempo", font=header_font).grid(row=0, column=2, padx=10, pady=(0, 5))
+        ctk.CTkLabel(frame, text="Player", font=header_font).grid(row=0, column=0, padx=10, pady=(0, 5))
+        ctk.CTkLabel(frame, text="Points", font=header_font).grid(row=0, column=1, padx=10, pady=(0, 5))
+        ctk.CTkLabel(frame, text="Time", font=header_font).grid(row=0, column=2, padx=10, pady=(0, 5))
 
         # --- Fila Jugador 1 ---
         body_font = ("M04_FATAL FURY", 16)
-        ctk.CTkLabel(frame, text="Jugador 1", font=body_font).grid(row=1, column=0, padx=10, pady=2)
-        ctk.CTkLabel(frame, text=f"{self.cp1_count}/{total}", font=body_font).grid(row=1, column=1, padx=10, pady=2)
+        ctk.CTkLabel(frame, text="Player 1", font=body_font).grid(row=1, column=0, padx=10, pady=2)
+        ctk.CTkLabel(frame, text=f"{self.cp1_count} of {total}", font=body_font).grid(row=1, column=1, padx=10, pady=2)
         ctk.CTkLabel(frame, text=time_str, font=body_font).grid(row=1, column=2, padx=10, pady=2)
 
         # --- Fila Jugador 2 ---
-        ctk.CTkLabel(frame, text="Jugador 2", font=body_font).grid(row=2, column=0, padx=10, pady=2)
-        ctk.CTkLabel(frame, text=f"{self.cp2_count}/{total}", font=body_font).grid(row=2, column=1, padx=10, pady=2)
+        ctk.CTkLabel(frame, text="Player 2", font=body_font).grid(row=2, column=0, padx=10, pady=2)
+        ctk.CTkLabel(frame, text=f"{self.cp2_count} of {total}", font=body_font).grid(row=2, column=1, padx=10, pady=2)
         ctk.CTkLabel(frame, text=time_str, font=body_font).grid(row=2, column=2, padx=10, pady=2)
 
         # --- Mensaje de ganador ---
         winner_font = ("M04_FATAL FURY", 20)
-        if winner == "Jugador 1" or "Jugador 2":
-            ctk.CTkLabel(self.over, text=f"Ganador: {winner}", font=winner_font, text_color="blue") \
+        if winner == "Player 1" or "Player 2":
+            ctk.CTkLabel(self.over, text=f"The winner is: {winner}", font=winner_font, text_color="green") \
             .pack(pady=(0, 10))
         else:
-            ctk.CTkLabel(self.over, text=f" {winner}", font=winner_font, text_color="blue") \
+            ctk.CTkLabel(self.over, text=f" {winner}", font=winner_font, text_color="green") \
                 .pack(pady=(0, 10))
 
         def on_finalize():
@@ -210,7 +214,7 @@ class CheckpointScreen:
 
         ctk.CTkButton(
             self.over,
-            text="Finalizar",
+            text="End",
             command=on_finalize
         ).pack(pady=10)
 
@@ -298,7 +302,7 @@ class CheckpointScreen:
             print(f"🔌 Intentando conectar a {connection_string} con baud {baud}...")
             self.dron.connect(connection_string, baud, blocking=True)
             if self.dron.state == "connected":
-                print("✅Jugador 1 conectado.")
+                print("✅Player 1 connected.")
                 self.connected_drones.append(self.dron)
                 # Iniciar telemetría
                 self.dron.send_telemetry_info(self.process_telemetry_info)
@@ -311,10 +315,10 @@ class CheckpointScreen:
             # Conexión del segundo dron (jugador 2)
         try:
             connection_string2 = "tcp:127.0.0.1:5772"
-            print(f"Conectando jugador 2 a {connection_string2}...")
+            print(f"Conectando Player 2 a {connection_string2}...")
             self.dron2.connect(connection_string2, baud, blocking=True)
             if self.dron2.state == "connected":
-                print("✅✅Jugador 2 conectado.")
+                print("✅✅Player 2 conectado.")
                 self.connected_drones.append(self.dron2)
                 # Se puede usar un callback distinto si querés diferenciarlos
                 self.dron2.send_telemetry_info(self.process_telemetry_info_second)
@@ -401,7 +405,7 @@ class CheckpointScreen:
                 if self.life1 <= 0.0:
                     winsound.PlaySound("assets/death.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
                     time.sleep(1)
-                    self._show_game_over(winner_forced="Jugador 2")
+                    self._show_game_over(winner_forced="Player 2")
                     return True
                 print(f"J1 choca: vida ahora {self.life1:.2f}")
                 print("¡Alerta! Dron 1 sobre obstáculo en celda", (col, row))
@@ -455,7 +459,7 @@ class CheckpointScreen:
                 if self.life2 <= 0.0:
                     winsound.PlaySound("assets/death.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
                     time.sleep(1)
-                    self._show_game_over(winner_forced="Jugador 1")
+                    self._show_game_over(winner_forced="Player 1")
                     return True
                 print(f"J2 choca: vida ahora {self.life2:.2f}")
                 print("¡Alerta! Dron 2 sobre obstáculo en celda", (col, row))
@@ -526,14 +530,14 @@ class CheckpointScreen:
         self.loading.bind("<Escape>", lambda e: self.loading.attributes("-fullscreen", False))
 
         self.msg_label = ctk.CTkLabel(self.loading, text="Starting...", font=("M04_FATAL FURY", 12), text_color="black", anchor="w")
-        self.msg_label.place(in_=self.loading, relx=0.02, rely=0.95, anchor="w")
+        self.msg_label.place(in_=self.loading, relx=0.02, rely=0.9, anchor="w")
 
         self.bar = ctk.CTkProgressBar(self.loading, orientation= "horizontal", height= 30, progress_color="green")
         self.bar.set(0.0)
         self.bar.pack(side="bottom", fill="x", padx=0, pady=10)
 
         self.pct_label = ctk.CTkLabel(self.loading, text="0 %", font=("Arial", 16), text_color="black")
-        self.pct_label.place(in_=self.loading, relx=0.98, rely=0.95, anchor="e")
+        self.pct_label.place(in_=self.loading, relx=0.98, rely=0.9, anchor="e")
 
         self.ready_btn = ctk.CTkButton(self.loading, text="Ready", font=("M04_FATAL FURY", 18),text_color="black", fg_color="transparent", command=self._on_ready, state="disabled")
         self.ready_btn.place(relx=0.5, rely=0.85, anchor="center")
@@ -591,7 +595,7 @@ class CheckpointScreen:
 
         pygame.mixer.music.load('assets/track_1.wav')
         pygame.mixer.music.play(-1, 0.0)
-        pygame.mixer.music.set_volume(0.5)
+        pygame.mixer.music.set_volume(0.2)
 
         map_width = self.map_data["map_size"]["width"]
         map_height = self.map_data["map_size"]["height"]
@@ -797,6 +801,10 @@ class CheckpointScreen:
         self.remaining_time = self.timer_duration
 
         def update_timer():
+
+            if self.game_over:
+                return 
+
             texto = self._format_time(self.remaining_time)
             self.timer1_label.configure(text=texto)
             self.timer2_label.configure(text=texto)
@@ -936,15 +944,15 @@ class CheckpointScreen:
 
         # Comprueba el estado del primer dron
         if hasattr(self, "dron") and self.dron:
-            self.player_listbox.insert("end", f"Jugador 1: {self.dron.state}\n")
+            self.player_listbox.insert("end", f"Player 1: {self.dron.state}\n")
         else:
-            self.player_listbox.insert("end", "Jugador 1: No conectado\n")
+            self.player_listbox.insert("end", "Player 1: No conectado\n")
 
         # Comprueba el estado del segundo dron
         if hasattr(self, "dron2") and self.dron2:
-            self.player_listbox.insert("end", f"Jugador 2: {self.dron2.state}\n")
+            self.player_listbox.insert("end", f"Player 2: {self.dron2.state}\n")
         else:
-            self.player_listbox.insert("end", "Jugador 2: No conectado\n")
+            self.player_listbox.insert("end", "Player 2: No conectado\n")
 
     def render_map_preview(self):
         """

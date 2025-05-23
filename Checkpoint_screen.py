@@ -8,7 +8,8 @@ import time
 import threading
 import winsound
 import pygame
-
+from Joystick import Joystick
+from pymavlink import mavutil
 
 class CheckpointScreen:
     def __init__(self, dron, dron2, parent_frame):
@@ -26,9 +27,9 @@ class CheckpointScreen:
         self.life1 = 1.0
         self.life2 = 1.0
         # “facil” resta un 5%, “medio” 10%, “dificil” 25% al chocar.
-        self.difficulty = "medio"
-        self.damage_map = {"facil": 0.05, "medio": 0.1, "dificil": 0.25}
-        self.hitbox_map = {"facil": 2, "medio": 1, "dificil": 0.5}
+        self.difficulty = "medium"
+        self.damage_map = {"easy": 0.05, "medium": 0.1, "hard": 0.25}
+        self.hitbox_map = {"easy": 2, "medium": 1, "hard": 0.5}
         self.raw_checkpoints = []  # lista completa de {id, original:{col,row}, mirror:{col,row}}
         self.queue_j1 = []  # checkpoints pendientes para jugador 1 (original)
         self.queue_j2 = []  # idem para jugador 2 (mirror)
@@ -38,6 +39,7 @@ class CheckpointScreen:
         self.cp2_count = 0
         self.cp1_label = None
         self.cp2_label = None
+        self.num = []
         # ---------------- CONFIGURAR GRID PRINCIPAL ----------------
         # Dividimos el frame en filas y columnas para acomodar widgets.
         self.frame.rowconfigure(0, weight=1)  # Para el título
@@ -118,7 +120,7 @@ class CheckpointScreen:
         # ─── Método para mostrar la ventana de fin de partida ───────────────────
 
 
-    def _show_game_over(self, winner_forced=None):
+    def _show_game_over(self, winner_forced=None, death_message=None):
         """
         Se ejecuta una sola vez al acabar tiempo o al recoger todos los checkpoints.
         Muestra puntos, tiempo empleado y ganador.
@@ -137,7 +139,7 @@ class CheckpointScreen:
         if winner_forced:
             winner = winner_forced
         else:
-            if self.cp1_count == total and self.cp2_count == total:
+            if self.cp1_count == self.cp2_count:
                 winner = "Draw"
             elif self.cp1_count == total:
                 winner = "Player 1"
@@ -149,13 +151,24 @@ class CheckpointScreen:
                     winner = "Player 1"
                 elif self.cp2_count > self.cp1_count:
                     winner = "Player 2"
-                else:
-                    winner = "Draw"
 
         # Crear ventana de resumen
         self.over = ctk.CTkToplevel(self.game_window)
         self.over.title("Game over")
         self.over.geometry("600x400")
+
+        self.over.transient(self.game_window)
+        self.over.grab_set()
+        self.over.lift(aboveThis=self.game_window)
+        self.over.focus_force()
+
+        if death_message:
+            ctk.CTkLabel(
+                self.over,
+                text=death_message,
+                font=("M04_FATAL FURY", 24, "bold"),
+                text_color="red"
+            ).pack(pady=(10, 0))
 
         title_lbl = ctk.CTkLabel(self.over, text="GAME OVER",font=("M04_FATAL FURY", 40, "bold"), text_color="red")
         title_lbl.pack(pady=(20, 10))
@@ -183,12 +196,22 @@ class CheckpointScreen:
 
         # --- Mensaje de ganador ---
         winner_font = ("M04_FATAL FURY", 20)
-        if winner == "Player 1" or "Player 2":
-            ctk.CTkLabel(self.over, text=f"The winner is: {winner}", font=winner_font, text_color="green") \
-            .pack(pady=(0, 10))
-        else:
-            ctk.CTkLabel(self.over, text=f" {winner}", font=winner_font, text_color="green") \
-                .pack(pady=(0, 10))
+
+        if winner in ("Player 1", "Player 2"):
+            ctk.CTkLabel(
+                self.over,
+                text=f"The winner is: {winner}",
+                font=winner_font,
+                text_color="green"
+            ).pack(pady=(0, 10))
+
+        elif winner == "Draw":
+            ctk.CTkLabel(
+                self.over,
+                text="Draw",
+                font=winner_font,
+                text_color="green"
+            ).pack(pady=(0, 10))
 
         def on_finalize():
             # Lanza RTL en hilos separados
@@ -294,16 +317,24 @@ class CheckpointScreen:
     # ----------------------------------------------------------------------
     # Conectar Jugador y activar telemetría
     # ----------------------------------------------------------------------
+
+
     def connect_player(self):
 
         baud = 115200
+        params = json.dumps([{"ID": "LOITER_SPEED", "Value": 100.0}])
         try:
             connection_string = "tcp:127.0.0.1:5762"
             print(f"🔌 Intentando conectar a {connection_string} con baud {baud}...")
             self.dron.connect(connection_string, baud, blocking=True)
             if self.dron.state == "connected":
-                print("✅Player 1 connected.")
                 self.connected_drones.append(self.dron)
+                time.sleep(1)
+                self.dron.setLoiterSpeed(1.0)
+                time.sleep(1)
+                self.dron.setRTLSpeed(1.0)
+                j1 = Joystick(0, self.dron)
+                print("✅Player 1 connected.")
                 # Iniciar telemetría
                 self.dron.send_telemetry_info(self.process_telemetry_info)
                 self.update_player_list()
@@ -312,7 +343,7 @@ class CheckpointScreen:
         except Exception as e:
             print(f"❌ Error en connect_player: {e}")
             messagebox.showerror("Error", f"Ocurrió un error inesperado: {e}")
-            # Conexión del segundo dron (jugador 2)
+        # Conexión del segundo dron (jugador 2)
         try:
             connection_string2 = "tcp:127.0.0.1:5772"
             print(f"Conectando Player 2 a {connection_string2}...")
@@ -320,6 +351,12 @@ class CheckpointScreen:
             if self.dron2.state == "connected":
                 print("✅✅Player 2 conectado.")
                 self.connected_drones.append(self.dron2)
+                time.sleep(1)
+                self.dron2.setLoiterSpeed(1.0)
+                time.sleep(1)
+                self.dron2.setRTLSpeed(1.0)
+                j2 = Joystick(1, self.dron2)
+                print("✅✅Player 2 conectado.")
                 # Se puede usar un callback distinto si querés diferenciarlos
                 self.dron2.send_telemetry_info(self.process_telemetry_info_second)
                 self.update_player_list()
@@ -405,7 +442,7 @@ class CheckpointScreen:
                 if self.life1 <= 0.0:
                     winsound.PlaySound("assets/death.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
                     time.sleep(1)
-                    self._show_game_over(winner_forced="Player 2")
+                    self._show_game_over(winner_forced="Player 2", death_message="Player 1 died!")
                     return True
                 print(f"J1 choca: vida ahora {self.life1:.2f}")
                 print("¡Alerta! Dron 1 sobre obstáculo en celda", (col, row))
@@ -459,7 +496,7 @@ class CheckpointScreen:
                 if self.life2 <= 0.0:
                     winsound.PlaySound("assets/death.wav", winsound.SND_FILENAME | winsound.SND_ASYNC)
                     time.sleep(1)
-                    self._show_game_over(winner_forced="Player 1")
+                    self._show_game_over(winner_forced="Player 1", death_message="Player 2 died!")
                     return True
                 print(f"J2 choca: vida ahora {self.life2:.2f}")
                 print("¡Alerta! Dron 2 sobre obstáculo en celda", (col, row))
@@ -546,6 +583,7 @@ class CheckpointScreen:
         threading.Thread(target=self._arm_flag, args=(self.dron, self.arm_done1), daemon=True).start()
         time.sleep(1)
         threading.Thread(target=self._takeoff_flag, args=(self.dron, self.takeoff_done1), daemon=True).start()
+        time.sleep(1)
         threading.Thread(target=self._arm_flag, args=(self.dron2, self.arm_done2), daemon=True).start()
         time.sleep(1)
         threading.Thread(target=self._takeoff_flag, args=(self.dron2, self.takeoff_done2), daemon=True).start()
@@ -711,8 +749,8 @@ class CheckpointScreen:
             lista_geo.append(geo_poly)
 
         # aplica el geofence
-        self.dron.setGEOFence(lista_geo, 0.5)
-        self.dron2.setGEOFence(lista_geo, 0.5)
+        self.dron.setGEOFence(lista_geo, 0.9)
+        self.dron2.setGEOFence(lista_geo, 0.9)
 
         print("Geofence enviado:", lista_geo)
 
@@ -789,8 +827,6 @@ class CheckpointScreen:
                                          text_color="black")
         self.timer2_label.grid(row=3, column=0, pady=(0, 10), sticky="n")
 
-        messagebox.showinfo("Juego Iniciado", "¡Comenzando la carrera con los jugadores conectados!")
-
         self.checkpoint_img = ImageTk.PhotoImage(
             Image.open("assets/checkpoint.png")
             .resize((cell_size, cell_size), Image.LANCZOS)
@@ -822,6 +858,8 @@ class CheckpointScreen:
         self.start_telemetry_sync_second(game_canvas)
 
     def start_game(self):
+
+        self.game_over = False
 
         if not self.map_data:
             messagebox.showwarning("Advertencia", "Selecciona un mapa antes de jugar.")

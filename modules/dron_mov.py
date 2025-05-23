@@ -14,6 +14,14 @@ import time
 from pymavlink import mavutil
 import pymavlink.dialects.v20.all as dialect
 
+def send_rc (self, roll, pitch, throttle, yaw ):
+
+    self.vehicle.mav.rc_channels_override_send(
+                self.vehicle.target_system,
+                self.vehicle.target_component,
+                roll, pitch, throttle, yaw,
+                0, 0, 0, 0  # RC5–RC8 sin cambios
+    )
 
 def _prepare_command_mov(self, step_x, step_y, step_z):
 
@@ -262,3 +270,50 @@ def setNavSpeed (self, speed):
         -1,  # Velocidad máxima (-1 para no limitar)
         0, 0, 0, 0)  # Parámetros adicionales (no utilizados)
     self.vehicle.mav.send(msg)
+
+def setLoiterSpeed(self, speed_m_s):
+    """
+    Envía PARAM_SET LOIT_SPEED para limitar la velocidad en Loiter.
+    speed_m_s en m/s → se convierte a cm/s automáticamente.
+    """
+    # 1. convierte m/s a cm/s
+    val_cm_s = float(speed_m_s) * 100.0
+
+    # 2. envía el MAVLink PARAM_SET exactamente igual que _arm usa set_mode_send
+    self.vehicle.mav.param_set_send(
+        self.vehicle.target_system,
+        self.vehicle.target_component,
+        b'LOIT_SPEED',
+        val_cm_s,
+        mavutil.mavlink.MAV_PARAM_TYPE_REAL32
+    )
+
+    # 3. opcional: pedir de vuelta para confirmar (igual que esperas ACK en _arm)
+    self.vehicle.mav.param_request_read_send(
+        self.vehicle.target_system,
+        self.vehicle.target_component,
+        b'LOIT_SPEED',
+        -1
+    )
+
+def setRTLSpeed(self, speed_m_s):
+    """
+    Ajusta RTL_SPEED (cm/s) para limitar la velocidad de retorno a home.
+    speed_m_s: velocidad deseada en m/s (ej. 1.0 → 100 cm/s).
+    """
+    val_cm_s = float(speed_m_s) * 100.0
+    # 1) Envía PARAM_SET para RTL_SPEED
+    self.vehicle.mav.param_set_send(
+        self.vehicle.target_system,
+        self.vehicle.target_component,
+        b'RTL_SPEED',
+        val_cm_s,
+        mavutil.mavlink.MAV_PARAM_TYPE_REAL32
+    )
+    # 2) (Opcional) pide de vuelta para confirmar
+    self.vehicle.mav.param_request_read_send(
+        self.vehicle.target_system,
+        self.vehicle.target_component,
+        b'RTL_SPEED',
+        -1
+    )

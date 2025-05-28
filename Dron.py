@@ -48,5 +48,5 @@ class Dron(object):
     from modules.dron_telemetry import send_telemetry_info, _send_telemetry_info, stop_sending_telemetry_info
 
     from modules.dron_local_telemetry import send_local_telemetry_info, _send_local_telemetry_info, stop_sending_local_telemetry_info
-    from modules.dron_mov import move, _move, _prepare_command_mov, setStep, moveto, _moveto, _prepare_command_movto, inGeofence, setLocalGeofence, send_rc, setLoiterSpeed, setRTLSpeed
+    from modules.dron_mov import move, _move, _prepare_command_mov, setStep, moveto, _moveto, _prepare_command_movto, inGeofence, setLocalGeofence, send_rc, setLoiterSpeed, setRTLSpeed, condition_yaw
     from modules.dron_mov import inGeofence, _futurePosition, check, _distance, _destination,setNavSpeed

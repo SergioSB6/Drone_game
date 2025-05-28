@@ -317,3 +317,25 @@ def setRTLSpeed(self, speed_m_s):
         b'RTL_SPEED',
         -1
     )
+
+from pymavlink import mavutil
+
+def condition_yaw(self, heading_deg, yaw_rate_deg_s=10, direction=1, relative=False):
+    """
+    Ordena un cambio de yaw:
+      heading_deg: destino en grados (0–360)
+      yaw_rate_deg_s: velocidad de giro en °/s
+      direction: 1 = cw, -1 = ccw
+      relative: False → heading absoluto, True → relativo
+    """
+    self.vehicle.mav.command_long_send(
+        self.vehicle.target_system,
+        self.vehicle.target_component,
+        mavutil.mavlink.MAV_CMD_CONDITION_YAW,
+        0,
+        heading_deg,          # Param 1: target heading
+        yaw_rate_deg_s,       # Param 2: yaw speed
+        direction,            # Param 3: direction
+        int(relative),        # Param 4: relative (1) o absoluto (0)
+        0, 0, 0               # Param 5-7: no usados
+    )

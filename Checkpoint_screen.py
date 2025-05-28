@@ -44,7 +44,9 @@ class CheckpointScreen:
         # Dividimos el frame en filas y columnas para acomodar widgets.
         self.frame.rowconfigure(0, weight=1)  # Para el título
         self.frame.rowconfigure(1, weight=1)  # Para la fila de "LISTA" vs "PREVIEW"
-        self.frame.rowconfigure(2, weight=1)  # Para la fila donde pueden ir los botones
+        self.frame.rowconfigure(2, weight=0)
+        self.frame.rowconfigure(3, weight=1)
+        self.frame.rowconfigure(4, weight=0)
         self.frame.columnconfigure(0, weight=1)
         self.frame.columnconfigure(1, weight=1)
 
@@ -57,8 +59,15 @@ class CheckpointScreen:
         label_players = ctk.CTkLabel(self.frame, text="CONNECTED PLAYERS", font=("M04_FATAL FURY", 20))
         label_players.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="n")
 
-        self.player_listbox = ctk.CTkTextbox(self.frame, width=300, height=300)
+        self.player_listbox = ctk.CTkTextbox(self.frame, width=250, height=300)
         self.player_listbox.grid(row=2, column=0, padx=10, pady=5, sticky="n")
+
+        self.info_label = ctk.CTkLabel(
+            self.frame,
+            text="Press L1 in your Joystick to connect!",
+            font=("M04_FATAL FURY", 12)
+        )
+        self.info_label.grid(row=3, column=0, padx=10, pady=(5, 10), sticky="n")
 
         # ---------------- PREVIEW MAPA (Columna 1) ----------------
         self.preview_label = ctk.CTkLabel(self.frame, text="MAP PREVIEW", font=("M04_FATAL FURY", 20))
@@ -69,7 +78,7 @@ class CheckpointScreen:
 
         # ---------------- FILA DE BOTONES AL FINAL ----------------
         botones_frame = ctk.CTkFrame(self.frame)
-        botones_frame.grid(row=3, column=0, columnspan=2, pady=(20, 10))
+        botones_frame.grid(row=4, column=0, columnspan=2, pady=(20, 10))
 
         # Selector de dificultad
         self.difficulty_var = ctk.StringVar(value=self.difficulty.capitalize())
@@ -105,6 +114,11 @@ class CheckpointScreen:
         self.time_entry = ctk.CTkEntry(botones_frame, width=50)
         self.time_entry.insert(0, "2")  # valor por defecto (minutos)
         self.time_entry.pack(side="left", padx=(0, 20))
+
+        pygame.init()
+        pygame.joystick.init()
+        # arrancamos el listener de mandos
+        threading.Thread(target=self._listen_for_joy4, daemon=True).start()
 
     # ─── Método para formatear segundos a M:SS ──────────────────────────────
 
@@ -317,12 +331,50 @@ class CheckpointScreen:
     # ----------------------------------------------------------------------
     # Conectar Jugador y activar telemetría
     # ----------------------------------------------------------------------
+    def _listen_for_joy4(self):
+        # asumimos que sólo hay hasta 2 mandos conectados
+        while len(self.connected_drones) < 2:
+            for idx in range(pygame.joystick.get_count()):
+                joy = pygame.joystick.Joystick(idx)
+                joy.init()
+                joy_button4 = joy.get_button(4)
+                if joy_button4 == 1 and idx not in self.num:
+                    # asignamos este idx a la lista de “usados”
+                    self.num.append(idx)
+                    # conectamos dron correspondiente
+                    if len(self.connected_drones) == 0:
+                        self._connect_single(self.dron, idx, player=1)
+                    else:
+                        self._connect_single(self.dron2, idx, player=2)
+            pygame.time.wait(100)
 
+    def _connect_single(self, drone, joy_index, player):
+        baud = 115200
+        conn_str = "tcp:127.0.0.1:5762" if player == 1 else "tcp:127.0.0.1:5772"
+        print(f"🔌 Player {player}: intentando conectar a {conn_str}…")
+        drone.connect(conn_str, baud, blocking=True)
+        if drone.state == "connected":
+            print(f"✅ Player {player} connected.")
+            self.connected_drones.append(drone)
+            # ajustamos velocidades
+            time.sleep(1)
+            drone.setLoiterSpeed(3.0)
+            time.sleep(1)
+            drone.setRTLSpeed(1.0)
+            # arrancamos joystick handler en bucle
+            Joystick(joy_index, drone)
+            # telemetría y lista en UI
+            if player == 1:
+                drone.send_telemetry_info(self.process_telemetry_info)
+            else:
+                drone.send_telemetry_info(self.process_telemetry_info_second)
+            self.update_player_list()
+        else:
+            messagebox.showerror("Error", f"Player {player} no conectado.")
 
     def connect_player(self):
 
         baud = 115200
-        params = json.dumps([{"ID": "LOITER_SPEED", "Value": 100.0}])
         try:
             connection_string = "tcp:127.0.0.1:5762"
             print(f"🔌 Intentando conectar a {connection_string} con baud {baud}...")
@@ -330,7 +382,7 @@ class CheckpointScreen:
             if self.dron.state == "connected":
                 self.connected_drones.append(self.dron)
                 time.sleep(1)
-                self.dron.setLoiterSpeed(1.0)
+                self.dron.setLoiterSpeed(3.0)
                 time.sleep(1)
                 self.dron.setRTLSpeed(1.0)
                 j1 = Joystick(0, self.dron)
@@ -352,7 +404,7 @@ class CheckpointScreen:
                 print("✅✅Player 2 conectado.")
                 self.connected_drones.append(self.dron2)
                 time.sleep(1)
-                self.dron2.setLoiterSpeed(1.0)
+                self.dron2.setLoiterSpeed(3.0)
                 time.sleep(1)
                 self.dron2.setRTLSpeed(1.0)
                 j2 = Joystick(1, self.dron2)
@@ -531,17 +583,21 @@ class CheckpointScreen:
 
     def _arm_flag(self, drone, event):
         """Arma al dron y señala cuando termina."""
-        try:
+        while drone.state == "connected":
+            print(f"→ Intentando armar dron (estado actual: {drone.state})")
             drone.arm()
-        finally:
-            event.set()
+            time.sleep(1)
+        print("✔️ Dron armado")
+        event.set()
 
     def _takeoff_flag(self, drone, event):
         """Despega al dron y señala cuando termina."""
-        try:
+        while drone.state != "flying":
+            print(f"→ Intentando takeoff (estado actual: {drone.state})")
             drone.takeOff(5)
-        finally:
-            event.set()
+            time.sleep(1)
+        print("✔️ Dron en vuelo")
+        event.set()
 
     def _on_ready(self):
         """Se pulsa Ready: destruye la carga y arranca el juego."""
@@ -621,6 +677,11 @@ class CheckpointScreen:
 
         elif self.stage == 4:
             if self.takeoff_done1.is_set() and self.takeoff_done2.is_set():
+                TARGET_HEADING = 72
+                YAW_RATE = 20  # °/s
+                # direction=1 (clockwise), relative=False (absoluto)
+                self.dron.condition_yaw(TARGET_HEADING, YAW_RATE, direction=1, relative=False)
+                self.dron2.condition_yaw(TARGET_HEADING, YAW_RATE, direction=1, relative=False)
                 self.bar.set(1.0)
                 self.msg_label.configure(text="Loading progress finished")
                 self.pct_label.configure(text="100 %")
@@ -930,7 +991,7 @@ class CheckpointScreen:
 
                 print(f"✅ Dron 1 en canvas: lógico=({x_logic:.1f},{y_logic:.1f})  dibujado=({x_draw:.1f},{y_draw:.1f})")
 
-            canvas.after(35, update)
+            canvas.after(100, update)
 
         update()
 
@@ -970,7 +1031,7 @@ class CheckpointScreen:
 
                 print(f"✅ Dron 2 en canvas: lógico=({x_logic:.1f},{y_logic:.1f})  dibujado=({x_draw:.1f},{y_draw:.1f})")
 
-            canvas.after(35, update)
+            canvas.after(100, update)
 
         update()
 

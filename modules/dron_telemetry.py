@@ -8,7 +8,7 @@ def _send_telemetry_info(self, process_telemetry_info):
     self.alt = 0
     self.sendTelemetryInfo = True
     while self.sendTelemetryInfo:
-        msg = self.vehicle.recv_match(type='GLOBAL_POSITION_INT', blocking= True, timeout = 3)
+        msg = self.vehicle.recv_match(type='GLOBAL_POSITION_INT', blocking=False)
         if msg:
             msg = msg.to_dict()
             self.lat = float(msg['lat'] / 10 ** 7)
@@ -28,16 +28,14 @@ def _send_telemetry_info(self, process_telemetry_info):
                 'state': self.state
             }
 
-
-
             if self.id == None:
                 process_telemetry_info (telemetry_info)
             else:
                 process_telemetry_info (self.id, telemetry_info)
-        time.sleep(0.3)
+        time.sleep(0.1)
 
 def send_telemetry_info(self, process_telemetry_info):
-    telemetryThread = threading.Thread(target=self._send_telemetry_info, args=[process_telemetry_info,])
+    telemetryThread = threading.Thread(target=self._send_telemetry_info, args=[process_telemetry_info], daemon=True)
     telemetryThread.start()
 
 def stop_sending_telemetry_info(self):

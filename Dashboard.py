@@ -127,10 +127,9 @@ def main():
     subprocess.Popen(cmd_sitl2, cwd=base_dir, creationflags=flags)
     time.sleep(2)
 
-    # Una sola Mission Planner → conectar al puerto 5762 (puedes cambiarlo a 5772 si quieres)
+    # Una sola Mission Planner → conectar al puerto 5762
     cmd_mp = [
-        mp_exe,
-        "/connect", "tcp:127.0.0.1:5762"
+        mp_exe
     ]
     print("Lanzando Mission Planner:", " ".join(cmd_mp))
     subprocess.Popen(cmd_mp, cwd=os.path.dirname(mp_exe), creationflags=flags)

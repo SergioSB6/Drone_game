@@ -74,4 +74,4 @@ class Joystick:
 
     def map_axis(self, value):
         """Convierte valor del eje (-1 a 1) a rango RC (1000 a 2000)"""
-        return int(1500 + value *value*value*value*value* 500)
+        return int(1500 + value *value*value*value*value*value*value*value*value*value*value*value*value* 500)

@@ -80,18 +80,18 @@ class MapFrameClass:
         self.checkpoints_spinbox.pack(pady=(0, 10))
 
     def add_buttons(self):
-        self.add_background_button = ctk.CTkButton(self.control_panel, text="Añadir Fondo", command=self.add_background)
+        self.add_background_button = ctk.CTkButton(self.control_panel, text="Background", command=self.add_background)
         self.add_background_button.pack(pady=10)
 
-        self.add_obstacle_button = ctk.CTkButton(self.control_panel, text="Añadir Obstáculo",
+        self.add_obstacle_button = ctk.CTkButton(self.control_panel, text="Add Obstacle",
                                                  command=self.add_marker_mode)
         self.add_obstacle_button.pack(pady=10)
 
-        self.delete_button = ctk.CTkButton(self.control_panel, text="Borrar Obstáculo Seleccionado",
+        self.delete_button = ctk.CTkButton(self.control_panel, text="Delete obstacle",
                                            command=self.delete_selected_obstacle)
         self.delete_button.pack(pady=10)
 
-        self.save_button = ctk.CTkButton(self.control_panel, text="Guardar Mapa", command=self.save_map)
+        self.save_button = ctk.CTkButton(self.control_panel, text="Save map", command=self.save_map)
         self.save_button.pack(pady=10)
 
     def draw_grid(self):

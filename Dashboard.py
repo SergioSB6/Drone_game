@@ -77,68 +77,6 @@ def install_custom_font():
 for m in get_monitors():
     print(str(m))
 
-def main():
-    # Llamar a la función
-    install_requirements()
-    install_custom_font()
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    print("Directorio base:", base_dir)
-
-    # Rutas a los ejecutables
-    sitl_exe = os.path.join(base_dir, "Mission Planner1", "sitl", "ArduCopter.exe")
-    defaults  = os.path.join(base_dir, "Mission Planner1", "sitl", "default_params", "copter.parm")
-    mp_exe    = os.path.join(base_dir, "Mission Planner1", "Mission Planner2", "MissionPlanner.exe")
-
-    # Verificaciones
-    for path,name in [(sitl_exe,"SITL"), (defaults,"copter.parm"), (mp_exe,"Mission Planner")]:
-        if not os.path.isfile(path):
-            print(f"ERROR: No encontrado {name} en:\n  {path}")
-            return
-
-    flags = subprocess.CREATE_NEW_CONSOLE
-
-    # SITL 1 → puerto TCP 5762
-    cmd_sitl1 = [
-        sitl_exe,
-        "--model", "+",
-        "--speedup", "3",
-        "--instance", "0",
-        "--defaults", defaults,
-        "--home", "41.276358174374515, 1.988269781384222,3,0",
-        "-P", "SYSID_THISMAV=1",
-
-    ]
-    print("Lanzando SITL #1:", " ".join(cmd_sitl1))
-    subprocess.Popen(cmd_sitl1, cwd=base_dir, creationflags=flags)
-    time.sleep(2)
-
-    # SITL 2 → puerto TCP 5772
-    cmd_sitl2 = [
-        sitl_exe,
-        "--model", "+",
-        "--speedup", "3",
-        "--instance", "1",
-        "--defaults", defaults,
-        "--home", "41.27622147922305, 1.9883288804776904,3,0",
-        "-P", "SYSID_THISMAV=2",
-
-    ]
-    print("Lanzando SITL #2:", " ".join(cmd_sitl2))
-    subprocess.Popen(cmd_sitl2, cwd=base_dir, creationflags=flags)
-    time.sleep(2)
-
-    # Una sola Mission Planner → conectar al puerto 5762
-    cmd_mp = [
-        mp_exe
-    ]
-    print("Lanzando Mission Planner:", " ".join(cmd_mp))
-    subprocess.Popen(cmd_mp, cwd=os.path.dirname(mp_exe), creationflags=flags)
-
-    print("¡Todo levantado correctamente!")
-
-if __name__ == "__main__":
-    main()
-
 # ================= DASHBOARD INICIAL =================
 dron = Dron()    # Dron 1
 dron2 = Dron()   # Dron 2

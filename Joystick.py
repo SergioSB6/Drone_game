@@ -39,15 +39,18 @@ class Joystick:
             print("Ejes:", ["{:.2f}".format(a) for a in axes])
 
             print ("miro")
-            if self.dron.state == "connected":
-                # con dron armado, neutro para Loiter
-                throttle = 1000
-            else:
-                # sin armar, mínimo para permitir el arm
-                throttle = 1500
+            # if self.dron.state == "connected":
+            #     # con dron armado, neutro para Loiter
+            #     throttle = 1000
+            # else:
+            #     # sin armar, mínimo para permitir el arm
+            #     throttle = 1500
+
+            throttle = self.map_axis(self.joystick.get_axis(1))
             roll = self.map_axis(self.joystick.get_axis(3))  # RC1: Roll
             pitch = self.map_axis(self.joystick.get_axis(self.pitch))  # RC2: Pitch
-            yaw = self.map_axis(self.joystick.get_axis(0))  # RC4: Yaw
+            yaw = 1500
+            #yaw = self.map_axis(self.joystick.get_axis(0))  # RC4: Yaw
             self.dron.send_rc( roll, pitch, throttle, yaw)
             print(self.dron.state)
             print(throttle)

@@ -3,13 +3,18 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox, Toplevel
 import json
 import math
+
+import pywinstyles
 from PIL import Image, ImageTk
 import time
 import threading
 import winsound
 import pygame
 from Joystick import Joystick
-from pymavlink import mavutil
+import subprocess
+import win32con
+import tkinter.simpledialog as sd
+from screeninfo import get_monitors
 
 class CheckpointScreen:
     def __init__(self, dron, dron2, parent_frame):
@@ -40,16 +45,21 @@ class CheckpointScreen:
         self.cp1_label = None
         self.cp2_label = None
         self.num = []
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.sitl_procs = []  # aquí guardamos los Popen de los SITL
+        self.mp_proc = None
+        self.monitors = get_monitors()
+        self.width = self.monitors[0].width
+        self.height = self.monitors[0].height
         # ---------------- CONFIGURAR GRID PRINCIPAL ----------------
-        # Dividimos el frame en filas y columnas para acomodar widgets.
-        self.frame.rowconfigure(0, weight=1)  # Para el título
-        self.frame.rowconfigure(1, weight=1)  # Para la fila de "LISTA" vs "PREVIEW"
-        self.frame.rowconfigure(2, weight=0)
-        self.frame.rowconfigure(3, weight=1)
-        self.frame.rowconfigure(4, weight=0)
+        self.frame.rowconfigure(0, weight=0)  # título
+        self.frame.rowconfigure(1, weight=0)  # headers
+        self.frame.rowconfigure(2, weight=1)  # listas / canvas
+        self.frame.rowconfigure(3, weight=0)  # info_label / “Modo:” label
+        self.frame.rowconfigure(4, weight=0)  # desplegable
+        self.frame.rowconfigure(5, weight=0)  # botones
         self.frame.columnconfigure(0, weight=1)
         self.frame.columnconfigure(1, weight=1)
-
         # ---------------- TÍTULO ----------------
         label_title = ctk.CTkLabel(self.frame, text="CHECKPOINT RACE MODE", font=("M04_FATAL FURY", 50))
         # Lo ponemos en la primera fila, ocupando 2 columnas
@@ -57,28 +67,55 @@ class CheckpointScreen:
 
         # ---------------- LISTA DE JUGADORES (Columna 0) ----------------
         label_players = ctk.CTkLabel(self.frame, text="CONNECTED PLAYERS", font=("M04_FATAL FURY", 20))
-        label_players.grid(row=1, column=0, padx=10, pady=(0, 5), sticky="n")
+        label_players.grid(row=1, column=0, padx=10, pady=50, sticky="n")
 
         self.player_listbox = ctk.CTkTextbox(self.frame, width=250, height=300)
-        self.player_listbox.grid(row=2, column=0, padx=10, pady=5, sticky="n")
+        self.player_listbox.grid(row=2, column=0, padx=10, pady=80, sticky="n")
+
 
         self.info_label = ctk.CTkLabel(
             self.frame,
             text="Press L1 in your Joystick to connect!",
             font=("M04_FATAL FURY", 12)
         )
-        self.info_label.grid(row=3, column=0, padx=10, pady=(5, 10), sticky="n")
+        self.info_label.grid(row=3, column=0, padx=10, pady=5, sticky="n")
 
         # ---------------- PREVIEW MAPA (Columna 1) ----------------
         self.preview_label = ctk.CTkLabel(self.frame, text="MAP PREVIEW", font=("M04_FATAL FURY", 20))
-        self.preview_label.grid(row=1, column=1, padx=10, pady=(0, 5), sticky="n")
+        self.preview_label.grid(row=1, column=1, padx=10, pady=50, sticky="n")
 
         self.map_canvas = ctk.CTkCanvas(self.frame, width=500, height=500, bg="gray")
-        self.map_canvas.grid(row=2, column=1, padx=10, pady=5, sticky="n")
+        self.map_canvas.grid(row=2, column=1, padx=10, pady=80, sticky="n")
+
+        ctk.CTkLabel(self.frame, text="Modo:", font=("M04_FATAL FURY", 15)) \
+            .grid(row=3, column=1, sticky="w", padx=(0, 5), pady=(5, 0))
+
+        # -------------- DESPLEGABLE (row 4) --------------
+        self.mode_var = ctk.StringVar(value="Simulation")
+        self.mode_menu = ctk.CTkOptionMenu(
+            self.frame,
+            values=["Simulation", "Production"],
+            variable=self.mode_var,
+            command=self.on_mode_change,
+            width=150
+        )
+        self.mode_menu.grid(row=4, column=1, sticky="w", padx=0, pady=0)
+
+        self.control_var = ctk.StringVar(value="Joystick")
+        self.control_menu = ctk.CTkOptionMenu(
+            self.frame,
+            values=["Joystick", "RC Transmitter"],
+            variable=self.control_var,
+            command=self.on_control_change,
+            width=150
+        )
+        self.control_menu.grid(row=4, column=1, sticky="w", padx=200, pady=0)
+        # ocultamos hasta que el modo sea Production
+        self.control_menu.grid_remove()
 
         # ---------------- FILA DE BOTONES AL FINAL ----------------
         botones_frame = ctk.CTkFrame(self.frame)
-        botones_frame.grid(row=4, column=0, columnspan=2, pady=(20, 10))
+        botones_frame.grid(row=5, column=0, columnspan=2, pady=(20, 10))
 
         # Selector de dificultad
         self.difficulty_var = ctk.StringVar(value=self.difficulty.capitalize())
@@ -114,11 +151,111 @@ class CheckpointScreen:
         self.time_entry = ctk.CTkEntry(botones_frame, width=50)
         self.time_entry.insert(0, "2")  # valor por defecto (minutos)
         self.time_entry.pack(side="left", padx=(0, 20))
+        self.update_player_list()
+    def launch_sitl_servers(self):
+        # si ya hay 2 SITL vivos, no hacer nada
+        alive = [p for p in self.sitl_procs if p.poll() is None]
+        if len(alive) >= 2:
+            return
 
-        pygame.init()
-        pygame.joystick.init()
-        # arrancamos el listener de mandos
-        threading.Thread(target=self._listen_for_joy4, daemon=True).start()
+        sitl_exe = os.path.join(self.base_dir, "Mission Planner1", "sitl", "ArduCopter.exe")
+        defaults = os.path.join(self.base_dir, "Mission Planner1", "sitl", "default_params", "copter.parm")
+
+        flags = subprocess.CREATE_NEW_CONSOLE
+        si = subprocess.STARTUPINFO()
+        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        # SW_SHOWMINNOACTIVE abre minimizado y sin robar foco
+        si.wShowWindow = win32con.SW_SHOWMINNOACTIVE
+
+        # arranco SITL #1
+        cmd1 = [
+            sitl_exe, "--model", "+", "--speedup", "3", "--instance", "0",
+            "--defaults", defaults,
+            "--home", "41.276358174374515,1.988269781384222,3,0",
+            "-P", "SYSID_THISMAV=1",
+        ]
+        p1 = subprocess.Popen(cmd1, cwd=self.base_dir,
+                              creationflags=flags, startupinfo=si)
+        time.sleep(2)
+
+        # arranco SITL #2
+        cmd2 = [
+            sitl_exe, "--model", "+", "--speedup", "3", "--instance", "1",
+            "--defaults", defaults,
+            "--home", "41.27622147922305,1.9883288804776904,3,0",
+            "-P", "SYSID_THISMAV=2",
+        ]
+        p2 = subprocess.Popen(cmd2, cwd=self.base_dir,
+                              creationflags=flags, startupinfo=si)
+        time.sleep(2)
+
+        # guardamos solo los vivos
+        self.sitl_procs = [p for p in (p1, p2) if p.poll() is None]
+        print(f"→ SITL arrancados ({len(self.sitl_procs)})")
+
+    def launch_mission_planner(self):
+        # si ya tenemos uno vivo, no hacemos nada
+        if self.mp_proc and self.mp_proc.poll() is None:
+            return
+
+        mp_exe = os.path.join(self.base_dir, "Mission Planner1", "Mission Planner2", "MissionPlanner.exe")
+        flags = subprocess.CREATE_NEW_CONSOLE
+
+        self.mp_proc = subprocess.Popen(
+            [mp_exe],
+            cwd=os.path.dirname(mp_exe),
+            creationflags=flags
+        )
+        print("→ Mission Planner arrancado")
+
+    def shutdown_sitl_servers(self):
+        # termina todos los procesos SITL vivos
+        for p in self.sitl_procs:
+            if p.poll() is None:
+                p.terminate()
+                try:
+                    p.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    p.kill()
+        self.sitl_procs = []
+        print("→ SITL detenidos")
+
+    def on_mode_change(self, nuevo_modo):
+        if nuevo_modo == "Simulation":
+            self.dron.disconnect()
+            self.dron2.disconnect()
+            self.update_player_list()
+            self.info_label.grid()
+            self.control_menu.grid_remove()
+            pygame.init()
+            pygame.joystick.init()
+            # arrancamos el listener de mandos
+            threading.Thread(target=self._listen_for_joy4, daemon=True).start()
+            # 1) arrancar los SITL (si no están ya)…
+            self.launch_sitl_servers()
+            # 2) arrancar Mission Planner (si no está ya)
+            self.launch_mission_planner()
+        else:  # Production
+            self.dron.disconnect()
+            self.dron2.disconnect()
+            self.update_player_list()
+            self.control_menu.grid()
+            # cerrar los SITL
+            self.shutdown_sitl_servers()
+            self.launch_mission_planner()
+
+        print("Modo cambiado a", nuevo_modo)
+
+    def on_control_change(self, source):
+        if source == "Joystick":
+            pygame.init()
+            pygame.joystick.init()
+            # arrancamos el listener de mandos
+            threading.Thread(target=self._listen_for_joy4, daemon=True).start()
+        else:
+
+            self.info_label.grid_remove()
+
 
     # ─── Método para formatear segundos a M:SS ──────────────────────────────
 
@@ -334,88 +471,269 @@ class CheckpointScreen:
     def _listen_for_joy4(self):
         # asumimos que sólo hay hasta 2 mandos conectados
         while len(self.connected_drones) < 2:
+            pygame.event.pump()
             for idx in range(pygame.joystick.get_count()):
+                if idx in self.num:
+                    continue
                 joy = pygame.joystick.Joystick(idx)
                 joy.init()
-                joy_button4 = joy.get_button(4)
-                if joy_button4 == 1 and idx not in self.num:
-                    # asignamos este idx a la lista de “usados”
-                    self.num.append(idx)
-                    # conectamos dron correspondiente
-                    if len(self.connected_drones) == 0:
-                        self._connect_single(self.dron, idx, player=1)
-                    else:
-                        self._connect_single(self.dron2, idx, player=2)
-            pygame.time.wait(100)
+                if joy.get_button(4) == 1:
+                    # intento conectar; sólo si devuelve True, bloqueo este joystick
+                    player = len(self.connected_drones) + 1
+                    success = self._connect_single(self.dron if player == 1 else self.dron2,
+                                                   idx,
+                                                   player=player)
+                    if success:
+                        self.num.append(idx)
+                    # espero a que suelte el botón para evitar rebotes
+                    while joy.get_button(4) == 1:
+                        pygame.event.pump()
+                        time.sleep(0.05)
+            time.sleep(0.1)
 
-    def _connect_single(self, drone, joy_index, player):
-        baud = 115200
-        conn_str = "tcp:127.0.0.1:5762" if player == 1 else "tcp:127.0.0.1:5772"
-        print(f"🔌 Player {player}: intentando conectar a {conn_str}…")
-        drone.connect(conn_str, baud, blocking=True)
-        if drone.state == "connected":
+    def _connect_single(self, drone, joy_index, player) -> bool:
+        """
+        Conecta un solo dron cuando se pulsa L1.
+        - En Production+Joystick: pide solo el COM de ese jugador (lo guarda en self.com1/self.com2).
+        - En Simulation: conecta por TCP a SITL en 5762 (player1) o 5772 (player2).
+        Devuelve True si conecta, False si el usuario cancela o hay error.
+        """
+
+
+        if self.mode_var.get() == "Production" and self.control_var.get() == "Joystick":
+            attr = f"com{player}"
+            if not hasattr(self, attr):
+                # Preparar variable donde guardaremos la respuesta del diálogo
+                self._resultado_com = None
+
+                def pedir_com():
+                    texto = f"Introduce el puerto COM de Player {player} (ej. COM3):"
+                    com = sd.askstring(
+                        title=f"Puerto COM Player {player}",
+                        prompt=texto,
+                        parent=self.frame
+                    )
+                    self._resultado_com = com  # Aquí se asigna la respuesta (str o None)
+
+                # Programamos la llamada al diálogo en el hilo principal de Tkinter
+                self.frame.after(0, pedir_com)
+
+                # Esperamos en el hilo secundario a que el usuario cierre el diálogo
+                while self._resultado_com is None:
+                    time.sleep(0.05)
+
+                com = self._resultado_com
+                if not com or not com.strip():
+                    messagebox.showwarning(
+                        "Advertencia",
+                        "Debes introducir un puerto COM válido."
+                    )
+                    return False
+
+                setattr(self, attr, com.strip())
+
+            conn_str = getattr(self, attr)
+            baud = 57600
+
+        elif self.mode_var.get() == "Simulation":
+            port = 5762 if player == 1 else 5772
+            conn_str = f"tcp:127.0.0.1:{port}"
+            baud = 115200
+
+        else:
+            # Otros modos posibles en el futuro
+            return False
+
+        # 2) Intentar la conexión
+        try:
+            print(f"🔌 Player {player}: intentando conectar a {conn_str} @ {baud}…")
+            drone.connect(conn_str, baud, blocking=True)
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Error conectando Player {player}: {e}"
+            )
+            return False
+
+        # 3) Verificar estado y, si conecta, arrancar telemetría/joystick/UI
+        if getattr(drone, "state", None) == "connected":
             print(f"✅ Player {player} connected.")
             self.connected_drones.append(drone)
-            # ajustamos velocidades
-            time.sleep(1)
-            drone.setLoiterSpeed(3.0)
-            time.sleep(1)
-            drone.setRTLSpeed(1.0)
-            # arrancamos joystick handler en bucle
+
+            # Ajustes compartidos según modo
+            if self.mode_var.get() == "Production" and self.control_var.get() == "Joystick":
+                drone.setLoiterSpeed(1.0)
+                time.sleep(1)
+                drone.setRTLSpeed(1.0)
+            elif self.mode_var.get() == "Simulation":
+                drone.setLoiterSpeed(3.0)
+                time.sleep(1)
+                drone.setRTLSpeed(1.0)
+
+            # Arranca loop de joystick
             Joystick(joy_index, drone)
-            # telemetría y lista en UI
+
+            # Telemetría y actualización de lista de jugadores
             if player == 1:
                 drone.send_telemetry_info(self.process_telemetry_info)
             else:
                 drone.send_telemetry_info(self.process_telemetry_info_second)
             self.update_player_list()
+            return True
+
         else:
-            messagebox.showerror("Error", f"Player {player} no conectado.")
+            messagebox.showerror(
+                "Error",
+                f"Player {player} no pasó a estado 'connected'."
+            )
+            return False
+
+    import time
+    import tkinter.simpledialog as sd
+    import tkinter.messagebox as messagebox
 
     def connect_player(self):
+        """
+        Conecta primero a Player 1 y, si Player 1 se conecta correctamente,
+        pide el COM de Player 2 y lo conecta. Cada intento tiene un timeout
+        para no quedarse bloqueado indefinidamente.
+        """
 
-        baud = 115200
+        # Solo válido en Production + RC Transmitter
+        if not (self.mode_var.get() == "Production" and self.control_var.get() == "RC Transmitter"):
+            messagebox.showerror("Error", "Este método solo sirve para modo Production con RC Transmitter.")
+            return
+
+        baud = 57600
+        timeout_secs = 10  # segundos máximos a esperar por cada dron
+
+        # ─── 1) Conexión de Player 1 ──────────────────────────────────────────────
+
+        # 1.1) Pedimos COM para Player 1
+        com1 = sd.askstring(
+            "Puerto COM Player 1",
+            "Introduce el puerto COM de Player 1 (ej. COM3):",
+            parent=self.frame
+        )
+        if not com1 or not com1.strip():
+            # El usuario canceló o dejó en blanco
+            return
+
+        com1 = com1.strip()
+        # 1.2) Intentamos la conexión en modo no bloqueante
         try:
-            connection_string = "tcp:127.0.0.1:5762"
-            print(f"🔌 Intentando conectar a {connection_string} con baud {baud}...")
-            self.dron.connect(connection_string, baud, blocking=True)
-            if self.dron.state == "connected":
-                self.connected_drones.append(self.dron)
-                time.sleep(1)
-                self.dron.setLoiterSpeed(3.0)
-                time.sleep(1)
-                self.dron.setRTLSpeed(1.0)
-                j1 = Joystick(0, self.dron)
-                print("✅Player 1 connected.")
-                # Iniciar telemetría
-                self.dron.send_telemetry_info(self.process_telemetry_info)
-                self.update_player_list()
-            else:
-                messagebox.showerror("Error", "El dron no está en estado 'connected'.")
+            print(f"🔌 Iniciando conexión Player 1 a {com1} @ {baud}…")
+            # blocking=False: regresa inmediatamente y _connect() corre en hilos internos
+            conectado1 = self.dron.connect(com1, baud, blocking=False)
+            if not conectado1:
+                # Si connect(...) devolvió False, significa que ya estaba conectado o hubo error
+                messagebox.showerror("Error", "No se pudo iniciar la conexión para Player 1.")
+                return
         except Exception as e:
-            print(f"❌ Error en connect_player: {e}")
-            messagebox.showerror("Error", f"Ocurrió un error inesperado: {e}")
-        # Conexión del segundo dron (jugador 2)
+            messagebox.showerror("Error", f"Error iniciando la conexión de Player 1:\n{e}")
+            return
+
+        # 1.3) Esperamos hasta timeout_secs a que self.dron.state == "connected"
+        start = time.time()
+        while time.time() - start < timeout_secs:
+            if getattr(self.dron, "state", None) == "connected":
+                break
+            time.sleep(0.1)
+        else:
+            # Timeout: no se conectó a tiempo
+            messagebox.showerror(
+                "Error",
+                f"Player 1 no se conectó en {timeout_secs} segundos. Abortando."
+            )
+            # Nos aseguramos de cerrar cualquier intento residual
+            try:
+                self.dron.disconnect()
+            except:
+                pass
+            return
+
+        # 1.4) Verificamos estado “connected” una vez más
+        if getattr(self.dron, "state", None) != "connected":
+            messagebox.showerror("Error", "Player 1 no alcanzó estado 'connected'.")
+            try:
+                self.dron.disconnect()
+            except:
+                pass
+            return
+
+        # Player 1 conectado con éxito
+        print("✅ Player 1 connected.")
+        self.connected_drones.append(self.dron)
+        # Ajustes de velocidad
+        time.sleep(1)
+        self.dron.setLoiterSpeed(1.0)
+        time.sleep(1)
+        self.dron.setRTLSpeed(1.0)
+        # Arrancamos telemetría (si lo deseas)
+        self.dron.send_telemetry_info(self.process_telemetry_info)
+        self.update_player_list()
+
+        # ─── 2) Conexión de Player 2 ──────────────────────────────────────────────
+
+        # 2.1) Pedimos COM para Player 2
+        com2 = sd.askstring(
+            "Puerto COM Player 2",
+            "Introduce el puerto COM de Player 2 (ej. COM4):",
+            parent=self.frame
+        )
+        if not com2 or not com2.strip():
+            # Si el usuario canceló o dejó en blanco, dejamos a Player 1 conectado y salimos
+            return
+
+        com2 = com2.strip()
+        # 2.2) Intentamos la conexión en modo no bloqueante
         try:
-            connection_string2 = "tcp:127.0.0.1:5772"
-            print(f"Conectando Player 2 a {connection_string2}...")
-            self.dron2.connect(connection_string2, baud, blocking=True)
-            if self.dron2.state == "connected":
-                print("✅✅Player 2 conectado.")
-                self.connected_drones.append(self.dron2)
-                time.sleep(1)
-                self.dron2.setLoiterSpeed(3.0)
-                time.sleep(1)
-                self.dron2.setRTLSpeed(1.0)
-                j2 = Joystick(1, self.dron2)
-                print("✅✅Player 2 conectado.")
-                # Se puede usar un callback distinto si querés diferenciarlos
-                self.dron2.send_telemetry_info(self.process_telemetry_info_second)
-                self.update_player_list()
-            else:
-                messagebox.showerror("Error", "El dron del jugador 2 no está en estado 'connected'.")
+            print(f"🔌 Iniciando conexión Player 2 a {com2} @ {baud}…")
+            conectado2 = self.dron2.connect(com2, baud, blocking=False)
+            if not conectado2:
+                messagebox.showerror("Error", "No se pudo iniciar la conexión para Player 2.")
+                return
         except Exception as e:
-            messagebox.showerror("Error", f"Error conectando jugador 2: {e}")
+            messagebox.showerror("Error", f"Error iniciando la conexión de Player 2:\n{e}")
+            return
+
+        # 2.3) Esperamos hasta timeout_secs a que self.dron2.state == "connected"
+        start = time.time()
+        while time.time() - start < timeout_secs:
+            if getattr(self.dron2, "state", None) == "connected":
+                break
+            time.sleep(0.1)
+        else:
+            # Timeout: Player 2 no se conectó a tiempo
+            messagebox.showerror(
+                "Error",
+                f"Player 2 no se conectó en {timeout_secs} segundos. Abortando."
+            )
+            try:
+                self.dron2.disconnect()
+            except:
+                pass
+            return
+
+        # 2.4) Verificamos estado “connected” una vez más
+        if getattr(self.dron2, "state", None) != "connected":
+            messagebox.showerror("Error", "Player 2 no alcanzó estado 'connected'.")
+            try:
+                self.dron2.disconnect()
+            except:
+                pass
+            return
+
+        # Player 2 conectado con éxito
+        print("✅ Player 2 connected.")
+        self.connected_drones.append(self.dron2)
+        time.sleep(1)
+        self.dron2.setLoiterSpeed(1.0)
+        time.sleep(1)
+        self.dron2.setRTLSpeed(1.0)
+        self.dron2.send_telemetry_info(self.process_telemetry_info_second)
+        self.update_player_list()
+
     # ----------------------------------------------------------------------
     def get_gps_from_canvas_coordinates(self, x, y):
             """
@@ -608,6 +926,11 @@ class CheckpointScreen:
     def _show_loading_screen(self):
 
         pygame.mixer.music.stop()
+
+        for drone in (self.dron, self.dron2):
+            params0 = json.dumps([{"ID": "PILOT_THR_BHV", "Value": 1.0}])
+            drone.setParams(params0, blocking=True)
+
         # 1. Eventos para saber cuando acaba cada operación
         self.arm_done1 = threading.Event()
         self.arm_done2 = threading.Event()
@@ -682,6 +1005,12 @@ class CheckpointScreen:
                 # direction=1 (clockwise), relative=False (absoluto)
                 self.dron.condition_yaw(TARGET_HEADING, YAW_RATE, direction=1, relative=False)
                 self.dron2.condition_yaw(TARGET_HEADING, YAW_RATE, direction=1, relative=False)
+                time.sleep(6)
+                for drone in (self.dron, self.dron2):
+                    drone.set_mode('LOITER')
+                    time.sleep(1)
+                    params1 = json.dumps([{"ID": "PILOT_THR_BHV", "Value": 0.0}])
+                    drone.setParams(params1, blocking=True)
                 self.bar.set(1.0)
                 self.msg_label.configure(text="Loading progress finished")
                 self.pct_label.configure(text="100 %")
@@ -712,15 +1041,22 @@ class CheckpointScreen:
         self.game_window.grid_columnconfigure(0, weight=0)
         self.game_window.grid_columnconfigure(1, weight=1)
         self.game_window.grid_columnconfigure(2, weight=0)
+        img = Image.open('assets/FONDO_JUEGO.png')
+        img = img.resize((self.width,self.height), Image.LANCZOS)
+        self.bg_image = ImageTk.PhotoImage(img)
+        fondo_label = ctk.CTkLabel(self.game_window, image=self.bg_image, text="")
+        fondo_label.place(relx=0, rely=0, relwidth=1, relheight=1)
+
 
         # --- Barra de vida horizontal J1 ---
 
-        life_frame1 = ctk.CTkFrame(self.game_window, fg_color="transparent")
+        life_frame1 = ctk.CTkFrame(self.game_window, fg_color="#000001", bg_color="#000001")
         life_frame1.grid(row=0, column=0, sticky="nw", padx=20, pady=10)
         life_frame1.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(life_frame1, text="PLAYER 1", font=("M04_FATAL FURY", 20), bg_color="transparent",
                      text_color="black") \
             .grid(row=0, column=0, pady=(0, 5))
+        pywinstyles.set_opacity(life_frame1, 1, color="#000001")
 
         self.hp1_bar = ctk.CTkProgressBar(
             life_frame1,
@@ -747,11 +1083,21 @@ class CheckpointScreen:
                                          text_color="black")
         self.timer1_label.grid(row=3, column=0, pady=(0, 10), sticky="n")
 
+        btn_land1 = ctk.CTkButton(
+            life_frame1,
+            text="Land Drone 1",
+            command=lambda: threading.Thread(
+                target=self.dron.Land, kwargs={"blocking": False}, daemon=True
+            ).start()
+        )
+        btn_land1.grid(row=4, column=0, pady=(5, 0))
+
         # --- contenedor central expandible ---
-        center_container = ctk.CTkFrame(self.game_window, fg_color="transparent")
+        center_container = ctk.CTkFrame(self.game_window, fg_color="#000001", bg_color="#000001")
         center_container.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         center_container.grid_rowconfigure(0, weight=1)
         center_container.grid_columnconfigure(0, weight=1)
+        pywinstyles.set_opacity(center_container, 1, color="#000001")
 
         # --- canvas central TAMAÑO FIJO y centrado ---
         # usa map_width/map_height tal como ya los calculas un poco más arriba
@@ -851,18 +1197,19 @@ class CheckpointScreen:
             drone1_image_path = "assets/dron.png"
             if not os.path.exists(drone1_image_path):
                 raise FileNotFoundError(f"No se encontró la imagen del dron en {drone1_image_path}")
-            drone1_image = Image.open(drone1_image_path).resize((cell_size, cell_size), Image.LANCZOS)
+            drone1_image = Image.open(drone1_image_path).resize((cell_size*2, cell_size*2), Image.LANCZOS)
             self.drone1_image_full = ImageTk.PhotoImage(drone1_image)
         except Exception as e:
             print(f"Error al cargar la imagen del dron: {e}")
 
             # --- Barra de vida horizontal J2 ---
-        life_frame2 = ctk.CTkFrame(self.game_window, fg_color="transparent")
+        life_frame2 = ctk.CTkFrame(self.game_window, fg_color="#000001", bg_color="#000001")
         life_frame2.grid(row=0, column=2, sticky="ne", padx=20, pady=10)
         life_frame2.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(life_frame2, text="PLAYER 2", font=("M04_FATAL FURY", 20), fg_color="transparent",
                      text_color="black") \
             .grid(row=0, column=0, pady=(0, 5))
+        pywinstyles.set_opacity(life_frame2, 1, color="#000001")
 
         self.hp2_bar = ctk.CTkProgressBar(
             life_frame2,
@@ -888,9 +1235,18 @@ class CheckpointScreen:
                                          text_color="black")
         self.timer2_label.grid(row=3, column=0, pady=(0, 10), sticky="n")
 
+        btn_land2 = ctk.CTkButton(
+            life_frame2,
+            text="Land Drone 2",
+            command=lambda: threading.Thread(
+                target=self.dron2.Land, kwargs={"blocking": False}, daemon=True
+            ).start()
+        )
+        btn_land2.grid(row=4, column=0, pady=(0, 5))
+
         self.checkpoint_img = ImageTk.PhotoImage(
             Image.open("assets/checkpoint.png")
-            .resize((cell_size, cell_size), Image.LANCZOS)
+            .resize((cell_size*2, cell_size*2), Image.LANCZOS)
         )
         self._spawn_next_checkpoint(game_canvas, self.queue_j1, "j1")
         self._spawn_next_checkpoint(game_canvas, self.queue_j2, "j2")

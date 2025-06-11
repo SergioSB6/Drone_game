@@ -8,7 +8,7 @@ import sys
 import shutil
 from Controles_Admin import ControlesAdmin
 import subprocess
-import time
+from PIL import Image, ImageTk
 import stat
 import os
 import ctypes
@@ -171,6 +171,7 @@ def bounce_button():
 # Agregar un botón a la ventana
 def boton_click():
     mostrar_frame(frame_menu)
+    gif_label.stop_thread()
 
 boton_play = ctk.CTkButton(master=frame_titulo, text="Play!", font=("M04_FATAL FURY", 50), fg_color="transparent", bg_color= "#000001",  hover=False, command=boton_click, width=300, height=50)
 boton_play.pack(pady=100, padx=0, side="bottom")
@@ -178,7 +179,7 @@ pywinstyles.set_opacity(boton_play, value=1, color="#000001")
 
 # Iniciar rebote
 bounce_button()
-gif_label.start()
+gif_label.start_thread()
 #gif_label2.start()
 # ================== CONTENIDO DEL MENÚ PRINCIPAL ==================
 

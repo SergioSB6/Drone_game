@@ -3,7 +3,7 @@ import customtkinter as ctk
 from tkinter import filedialog, messagebox, Toplevel
 import json
 import math
-
+from AnimatedGif import *
 import pywinstyles
 from PIL import Image, ImageTk
 import time
@@ -15,6 +15,7 @@ import subprocess
 import win32con
 import tkinter.simpledialog as sd
 from screeninfo import get_monitors
+
 
 class CheckpointScreen:
     def __init__(self, dron, dron2, parent_frame):
@@ -493,46 +494,37 @@ class CheckpointScreen:
 
     def _connect_single(self, drone, joy_index, player) -> bool:
         """
-        Conecta un solo dron cuando se pulsa L1.
-        - En Production+Joystick: pide solo el COM de ese jugador (lo guarda en self.com1/self.com2).
-        - En Simulation: conecta por TCP a SITL en 5762 (player1) o 5772 (player2).
-        Devuelve True si conecta, False si el usuario cancela o hay error.
+        Conecta un solo dron con timeout de 10s.
+        Si no conecta en ese tiempo, aborta y permite reintentar.
         """
-
+        TIMEOUT = 10  # segundos
 
         if self.mode_var.get() == "Production" and self.control_var.get() == "Joystick":
-            attr = f"com{player}"
-            if not hasattr(self, attr):
-                # Preparar variable donde guardaremos la respuesta del diálogo
-                self._resultado_com = None
+            # Pedir COM SIEMPRE
+            self._resultado_com = None
 
-                def pedir_com():
-                    texto = f"Introduce el puerto COM de Player {player} (ej. COM3):"
-                    com = sd.askstring(
-                        title=f"Puerto COM Player {player}",
-                        prompt=texto,
-                        parent=self.frame
-                    )
-                    self._resultado_com = com  # Aquí se asigna la respuesta (str o None)
+            def pedir_com():
+                texto = f"Introduce el puerto COM de Player {player} (ej. COM3):"
+                com = sd.askstring(
+                    title=f"Puerto COM Player {player}",
+                    prompt=texto,
+                    parent=self.frame
+                )
+                self._resultado_com = com
 
-                # Programamos la llamada al diálogo en el hilo principal de Tkinter
-                self.frame.after(0, pedir_com)
+            self.frame.after(0, pedir_com)
+            while self._resultado_com is None:
+                time.sleep(0.05)
 
-                # Esperamos en el hilo secundario a que el usuario cierre el diálogo
-                while self._resultado_com is None:
-                    time.sleep(0.05)
+            com = self._resultado_com
+            if not com or not com.strip():
+                messagebox.showwarning(
+                    "Advertencia",
+                    "Debes introducir un puerto COM válido."
+                )
+                return False
 
-                com = self._resultado_com
-                if not com or not com.strip():
-                    messagebox.showwarning(
-                        "Advertencia",
-                        "Debes introducir un puerto COM válido."
-                    )
-                    return False
-
-                setattr(self, attr, com.strip())
-
-            conn_str = getattr(self, attr)
+            conn_str = com.strip()
             baud = 57600
 
         elif self.mode_var.get() == "Simulation":
@@ -541,13 +533,13 @@ class CheckpointScreen:
             baud = 115200
 
         else:
-            # Otros modos posibles en el futuro
             return False
 
-        # 2) Intentar la conexión
+        # 2) Intentar la conexión, con timeout
         try:
             print(f"🔌 Player {player}: intentando conectar a {conn_str} @ {baud}…")
-            drone.connect(conn_str, baud, blocking=True)
+            # NO BLOQUEANTE para poder aplicar timeout
+            drone.connect(conn_str, baud, blocking=False)
         except Exception as e:
             messagebox.showerror(
                 "Error",
@@ -555,42 +547,55 @@ class CheckpointScreen:
             )
             return False
 
-        # 3) Verificar estado y, si conecta, arrancar telemetría/joystick/UI
-        if getattr(drone, "state", None) == "connected":
-            print(f"✅ Player {player} connected.")
-            self.connected_drones.append(drone)
-
-            # Ajustes compartidos según modo
-            if self.mode_var.get() == "Production" and self.control_var.get() == "Joystick":
-                drone.setLoiterSpeed(1.0)
-                time.sleep(1)
-                drone.setRTLSpeed(1.0)
-            elif self.mode_var.get() == "Simulation":
-                drone.setLoiterSpeed(3.0)
-                time.sleep(1)
-                drone.setRTLSpeed(1.0)
-
-            # Arranca loop de joystick
-            Joystick(joy_index, drone)
-
-            # Telemetría y actualización de lista de jugadores
-            if player == 1:
-                drone.send_telemetry_info(self.process_telemetry_info)
-            else:
-                drone.send_telemetry_info(self.process_telemetry_info_second)
-            self.update_player_list()
-            return True
-
+        # 3) Esperar hasta TIMEOUT a que drone.state == "connected"
+        start = time.time()
+        while time.time() - start < TIMEOUT:
+            if getattr(drone, "state", None) == "connected":
+                break
+            time.sleep(0.1)
         else:
+            messagebox.showerror(
+                "Error",
+                f"No se pudo conectar Player {player} en {TIMEOUT} segundos. Abortando."
+            )
+            # Intenta desconectar por si acaso
+            try:
+                drone.disconnect()
+            except Exception:
+                pass
+            return False
+
+        # 4) Confirmar estado una vez más
+        if getattr(drone, "state", None) != "connected":
             messagebox.showerror(
                 "Error",
                 f"Player {player} no pasó a estado 'connected'."
             )
+            try:
+                drone.disconnect()
+            except Exception:
+                pass
             return False
 
-    import time
-    import tkinter.simpledialog as sd
-    import tkinter.messagebox as messagebox
+        # 5) Si conecta, sigue igual
+        print(f"✅ Player {player} connected.")
+        self.connected_drones.append(drone)
+        if self.mode_var.get() == "Production" and self.control_var.get() == "Joystick":
+            drone.setLoiterSpeed(1.0)
+            time.sleep(1)
+            drone.setRTLSpeed(1.0)
+        elif self.mode_var.get() == "Simulation":
+            drone.setLoiterSpeed(3.0)
+            time.sleep(1)
+            drone.setRTLSpeed(1.0)
+
+        Joystick(joy_index, drone)
+        if player == 1:
+            drone.send_telemetry_info(self.process_telemetry_info)
+        else:
+            drone.send_telemetry_info(self.process_telemetry_info_second)
+        self.update_player_list()
+        return True
 
     def connect_player(self):
         """
@@ -939,23 +944,54 @@ class CheckpointScreen:
         self.stage = 1
 
         root = self.frame.winfo_toplevel()
-        self.loading = ctk.CTkToplevel(root, fg_color="white")
+        self.loading = ctk.CTkToplevel(root, fg_color="#000001")
         self.loading.attributes("-fullscreen", True)
         self.loading.transient(root)
         self.loading.grab_set()
         self.loading.bind("<Escape>", lambda e: self.loading.attributes("-fullscreen", False))
 
-        self.msg_label = ctk.CTkLabel(self.loading, text="Starting...", font=("M04_FATAL FURY", 12), text_color="black", anchor="w")
+        img = Image.open('assets/loading_screen.gif')
+        photoImg = ImageTk.PhotoImage(img)
+        self.gif_label = AnimatedGif(self.loading, 'assets/loading_screen.gif', 0.04)
+        self.gif_label.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.gif_label.start_thread()
+
+        self.msg_label = ctk.CTkLabel(
+            self.loading,
+            text="Starting...",
+            font=("M04_FATAL FURY", 12),
+            text_color="white",  # ← CAMBIA AQUÍ
+            anchor="w",
+            fg_color="transparent"
+        )
+
         self.msg_label.place(in_=self.loading, relx=0.02, rely=0.9, anchor="w")
+
 
         self.bar = ctk.CTkProgressBar(self.loading, orientation= "horizontal", height= 30, progress_color="green")
         self.bar.set(0.0)
         self.bar.pack(side="bottom", fill="x", padx=0, pady=10)
 
-        self.pct_label = ctk.CTkLabel(self.loading, text="0 %", font=("Arial", 16), text_color="black")
+        self.pct_label = ctk.CTkLabel(
+            self.loading,
+            text="0 %",
+            font=("Arial", 16),
+            text_color="white",  # ← CAMBIA AQUÍ
+            fg_color="transparent"
+        )
+
         self.pct_label.place(in_=self.loading, relx=0.98, rely=0.9, anchor="e")
 
-        self.ready_btn = ctk.CTkButton(self.loading, text="Ready", font=("M04_FATAL FURY", 18),text_color="black", fg_color="transparent", command=self._on_ready, state="disabled")
+        self.ready_btn = ctk.CTkButton(
+            self.loading,
+            text="Ready",
+            font=("M04_FATAL FURY", 18),
+            text_color="white",  # ← CAMBIA AQUÍ
+            fg_color="transparent",
+            command=self._on_ready,
+            state="disabled"
+        )
+
         self.ready_btn.place(relx=0.5, rely=0.85, anchor="center")
 
         # 3. Arranca sólo ARM
@@ -1028,7 +1064,7 @@ class CheckpointScreen:
         map_width = self.map_data["map_size"]["width"]
         map_height = self.map_data["map_size"]["height"]
         cell_size = self.map_data["map_size"]["cell_size"]
-
+        self.gif_label.stop_thread()
         # --- ventana en fullscreen ---
         def end_fullscreen(event=None):
             self.game_window.attributes("-fullscreen", False)

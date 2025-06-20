@@ -88,7 +88,7 @@ class CheckpointScreen:
         self.map_canvas = ctk.CTkCanvas(self.frame, width=500, height=500, bg="gray")
         self.map_canvas.grid(row=2, column=1, padx=10, pady=80, sticky="n")
 
-        ctk.CTkLabel(self.frame, text="Modo:", font=("M04_FATAL FURY", 15)) \
+        ctk.CTkLabel(self.frame, text="Mode:", font=("M04_FATAL FURY", 15)) \
             .grid(row=3, column=1, sticky="w", padx=(0, 5), pady=(5, 0))
 
         # -------------- DESPLEGABLE (row 4) --------------
@@ -462,9 +462,9 @@ class CheckpointScreen:
             with open(file_path, "r") as file:
                 self.map_data = json.load(file)
             self.render_map_preview()
-            messagebox.showinfo("Mapa Cargado", "Mapa cargado correctamente.")
+            messagebox.showinfo("INFO", "Mapa loaded.")
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo cargar el mapa: {e}")
+            messagebox.showerror("Error", f"Can't load the map: {e}")
 
     # ----------------------------------------------------------------------
     # Conectar Jugador y activar telemetría
@@ -504,9 +504,9 @@ class CheckpointScreen:
             self._resultado_com = None
 
             def pedir_com():
-                texto = f"Introduce el puerto COM de Player {player} (ej. COM3):"
+                texto = f"Enter the COM port Player {player} (ex. COM3):"
                 com = sd.askstring(
-                    title=f"Puerto COM Player {player}",
+                    title=f"COM port Player {player}",
                     prompt=texto,
                     parent=self.frame
                 )
@@ -519,8 +519,8 @@ class CheckpointScreen:
             com = self._resultado_com
             if not com or not com.strip():
                 messagebox.showwarning(
-                    "Advertencia",
-                    "Debes introducir un puerto COM válido."
+                    "Error",
+                    "You must enter a valid COM port."
                 )
                 return False
 
@@ -556,7 +556,7 @@ class CheckpointScreen:
         else:
             messagebox.showerror(
                 "Error",
-                f"No se pudo conectar Player {player} en {TIMEOUT} segundos. Abortando."
+                f"could not connect Player {player} in {TIMEOUT} seconds. Aborting."
             )
             # Intenta desconectar por si acaso
             try:
@@ -569,7 +569,7 @@ class CheckpointScreen:
         if getattr(drone, "state", None) != "connected":
             messagebox.showerror(
                 "Error",
-                f"Player {player} no pasó a estado 'connected'."
+                f"Player {player} not 'connected'."
             )
             try:
                 drone.disconnect()
@@ -606,7 +606,7 @@ class CheckpointScreen:
 
         # Solo válido en Production + RC Transmitter
         if not (self.mode_var.get() == "Production" and self.control_var.get() == "RC Transmitter"):
-            messagebox.showerror("Error", "Este método solo sirve para modo Production con RC Transmitter.")
+            messagebox.showerror("Error", "This method is for Production with RC Transmitter.")
             return
 
         baud = 57600
@@ -616,8 +616,8 @@ class CheckpointScreen:
 
         # 1.1) Pedimos COM para Player 1
         com1 = sd.askstring(
-            "Puerto COM Player 1",
-            "Introduce el puerto COM de Player 1 (ej. COM3):",
+            "COM port Player 1",
+            "Enter the COM port of Player 1 (ej. COM3):",
             parent=self.frame
         )
         if not com1 or not com1.strip():
@@ -632,10 +632,10 @@ class CheckpointScreen:
             conectado1 = self.dron.connect(com1, baud, blocking=False)
             if not conectado1:
                 # Si connect(...) devolvió False, significa que ya estaba conectado o hubo error
-                messagebox.showerror("Error", "No se pudo iniciar la conexión para Player 1.")
+                messagebox.showerror("Error", "The connection for Player 1 could not be initiated.")
                 return
         except Exception as e:
-            messagebox.showerror("Error", f"Error iniciando la conexión de Player 1:\n{e}")
+            messagebox.showerror("Error", f"Error starting Player 1 connection:\n{e}")
             return
 
         # 1.3) Esperamos hasta timeout_secs a que self.dron.state == "connected"
@@ -648,7 +648,7 @@ class CheckpointScreen:
             # Timeout: no se conectó a tiempo
             messagebox.showerror(
                 "Error",
-                f"Player 1 no se conectó en {timeout_secs} segundos. Abortando."
+                f"Player 1 did not connect in {timeout_secs} seconds. Aborting."
             )
             # Nos aseguramos de cerrar cualquier intento residual
             try:
@@ -659,7 +659,7 @@ class CheckpointScreen:
 
         # 1.4) Verificamos estado “connected” una vez más
         if getattr(self.dron, "state", None) != "connected":
-            messagebox.showerror("Error", "Player 1 no alcanzó estado 'connected'.")
+            messagebox.showerror("Error", "Player 1 did not reach status 'connected'.")
             try:
                 self.dron.disconnect()
             except:
@@ -682,8 +682,8 @@ class CheckpointScreen:
 
         # 2.1) Pedimos COM para Player 2
         com2 = sd.askstring(
-            "Puerto COM Player 2",
-            "Introduce el puerto COM de Player 2 (ej. COM4):",
+            "COM port Player 2",
+            "Enter the COM port of Player 2 (ej. COM4):",
             parent=self.frame
         )
         if not com2 or not com2.strip():
@@ -696,10 +696,10 @@ class CheckpointScreen:
             print(f"🔌 Iniciando conexión Player 2 a {com2} @ {baud}…")
             conectado2 = self.dron2.connect(com2, baud, blocking=False)
             if not conectado2:
-                messagebox.showerror("Error", "No se pudo iniciar la conexión para Player 2.")
+                messagebox.showerror("Error", "The connection for Player 2 could not be initiated.")
                 return
         except Exception as e:
-            messagebox.showerror("Error", f"Error iniciando la conexión de Player 2:\n{e}")
+            messagebox.showerror("Error", f"Error starting Player 2 connection:\n{e}")
             return
 
         # 2.3) Esperamos hasta timeout_secs a que self.dron2.state == "connected"
@@ -712,7 +712,7 @@ class CheckpointScreen:
             # Timeout: Player 2 no se conectó a tiempo
             messagebox.showerror(
                 "Error",
-                f"Player 2 no se conectó en {timeout_secs} segundos. Abortando."
+                f"could not connect Player 2 in {timeout_secs} seconds. Aborting."
             )
             try:
                 self.dron2.disconnect()
@@ -722,7 +722,7 @@ class CheckpointScreen:
 
         # 2.4) Verificamos estado “connected” una vez más
         if getattr(self.dron2, "state", None) != "connected":
-            messagebox.showerror("Error", "Player 2 no alcanzó estado 'connected'.")
+            messagebox.showerror("Error", "Player 2 did not reach status 'connected'.")
             try:
                 self.dron2.disconnect()
             except:
@@ -960,7 +960,7 @@ class CheckpointScreen:
             self.loading,
             text="Starting...",
             font=("M04_FATAL FURY", 12),
-            text_color="white",  # ← CAMBIA AQUÍ
+            text_color="white",
             anchor="w",
             fg_color="transparent"
         )
@@ -976,7 +976,7 @@ class CheckpointScreen:
             self.loading,
             text="0 %",
             font=("Arial", 16),
-            text_color="white",  # ← CAMBIA AQUÍ
+            text_color="white",
             fg_color="transparent"
         )
 
@@ -986,7 +986,7 @@ class CheckpointScreen:
             self.loading,
             text="Ready",
             font=("M04_FATAL FURY", 18),
-            text_color="white",  # ← CAMBIA AQUÍ
+            text_color="white",
             fg_color="transparent",
             command=self._on_ready,
             state="disabled"

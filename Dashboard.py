@@ -8,7 +8,7 @@ import sys
 import shutil
 from Controles_Admin import ControlesAdmin
 import subprocess
-from PIL import Image, ImageTk
+import threading
 import stat
 import os
 import ctypes
@@ -17,6 +17,7 @@ from screeninfo import get_monitors
 import pyglet
 import pywinstyles
 import pygame
+from tkinter import filedialog, messagebox
 from pymavlink import mavutil
 # Inicializar pygame mixer para música
 pygame.mixer.init()
@@ -178,6 +179,7 @@ boton_play.pack(pady=100, padx=0, side="bottom")
 pywinstyles.set_opacity(boton_play, value=1, color="#000001")
 
 # Iniciar rebote
+# threading.Thread(target=bounce_button(), daemon=True).start()
 bounce_button()
 gif_label.start_thread()
 #gif_label2.start()
@@ -308,8 +310,6 @@ icono_engrane2.place(x=10, y=10)  # Posicionarlo en la esquina superior izquierd
 # Editor de mapas
 # Abrimos el mapa
 def showmap():
-    global dron
-
     # ================== CONTENIDO DEL EDITOR DE MAPAS ==================
     # Inicializamos la clase del mapa con el dron y el frame_Editor_mapas como fatherFrame
     map_frame_class = MapFrameClass(dron, frame_Editor_mapas)

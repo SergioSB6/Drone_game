@@ -66,7 +66,7 @@ class MapFrameClass:
         self.map_canvas.grid(row=0, column=1, sticky="nsew")
         self.draw_grid()
         self.map_canvas.bind("<Button-1>", self.select_obstacle)
-        self.map_canvas.bind("<Button-3>", self.add_marker_event)
+        # self.map_canvas.bind("<Button-3>", self.add_marker_event)
         self.checkpoints_label = ctk.CTkLabel(self.control_panel, text="Num. Checkpoints:")
         self.checkpoints_label.pack(pady=(20, 5))
 
@@ -136,7 +136,7 @@ class MapFrameClass:
 
     def add_marker_mode(self):
         self.map_canvas.bind("<Button-3>", self.add_marker_event)
-        messagebox.showinfo("Modo de Añadir", "Haz clic derecho en el mapa para añadir un obstáculo.")
+        messagebox.showinfo("Modo de Añadir", "Right click to add obstacles!")
 
     def add_marker_event(self, event):
         x = self.map_canvas.canvasx(event.x)
@@ -146,7 +146,7 @@ class MapFrameClass:
         new_cells = {(col, row)}
 
         if any(cell in self.occupied_cells or cell in self.geofence_cells for cell in new_cells):
-            messagebox.showerror("Error", "No se puede colocar el obstáculo sobre otra celda ocupada o en el geofence.")
+            messagebox.showerror("Error", "You can't put an obstacle on a occupied cell or on the geofence!")
             return
 
         x = col * self.cell_size
@@ -160,7 +160,7 @@ class MapFrameClass:
 
         if any(cell in self.occupied_cells or cell in self.geofence_cells for cell in mirrored_cells):
             messagebox.showerror("Error",
-                                 "No se puede colocar el obstáculo espejo sobre otra celda ocupada o en el geofence.")
+                                 "You can't put an obstacle on a occupied cell or on the geofence!")
             return
 
         mirrored_x = mirrored_col * self.cell_size
@@ -190,7 +190,7 @@ class MapFrameClass:
             self.selected_obstacle = None
             print("Obstáculo y su espejo eliminados correctamente.")
         else:
-            messagebox.showwarning("Advertencia", "No hay obstáculo seleccionado para eliminar.")
+            messagebox.showwarning("Error", "You have to select an obstacle. Select with left click! ")
 
     def save_map(self):
         maps_folder = os.path.join(os.path.dirname(__file__), "maps")
@@ -285,10 +285,10 @@ class MapFrameClass:
             with open(file_name, "w") as file:
                 json.dump(map_data, file, indent=4)
 
-            messagebox.showinfo("Guardado", f"Mapa guardado correctamente en: {file_name}")
+            messagebox.showinfo("Guardado", f"Map saved in: {file_name}")
 
         except Exception as e:
-            messagebox.showerror("Error", f"Ocurrió un error al guardar el mapa: {e}")
+            messagebox.showerror("Error", f"Error saving the map: {e}")
 
     def add_background(self):
         background_folder = os.path.join(os.path.dirname(__file__), "Background")
@@ -312,9 +312,9 @@ class MapFrameClass:
                     with open(filename, "rb") as src, open(destination_path, "wb") as dst:
                         dst.write(src.read())
                 self.background_image_path = destination_path
-                messagebox.showinfo("Éxito", "Imagen de fondo añadida correctamente.")
+                messagebox.showinfo("Éxito", "Background image loaded")
             except Exception as e:
-                messagebox.showerror("Error", f"No se pudo cargar la imagen de fondo: {e}")
+                messagebox.showerror("Error", f"Error loading background: {e}")
 
     def select_obstacle(self, event):
         x, y = self.map_canvas.canvasx(event.x), self.map_canvas.canvasy(event.y)

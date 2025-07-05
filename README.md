@@ -41,3 +41,7 @@ Mission Planner (stable) [Download Mission Planner](https://firmware.ardupilot.o
 7. Move the previously unzipped folder (Mission Planner2) inside the newly pasted one.
 8. open the project in PyCharm, and select the version of Python we installed earlier as the interpreter.
 A prompt will appear to install the required libraries — click Install (this may take a few minutes).
+
+##Demos
+-Simulation mode demo: https://youtu.be/7ZYXPeF8E4g
+-Production mode (real drones) demo: https://youtu.be/PpO4J4XdDqk
